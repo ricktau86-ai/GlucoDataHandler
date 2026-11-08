@@ -67,6 +67,12 @@
         <PreferenceCategory
             android:title="@string/pref_cat_widgets"
             app:iconSpaceReserved="false">
+                <androidx.preference.SwitchPreferenceCompat
+                    android:defaultValue="true"
+                    android:key="widget_ring_style"
+                    android:title="@string/pref_widget_ring_style"
+                    android:summary="@string/pref_widget_ring_style_summary"
+                    app:iconSpaceReserved="false" />
                 <androidx.preference.SeekBarPreference
                     android:defaultValue="3"
                     app:showSeekBarValue="true"

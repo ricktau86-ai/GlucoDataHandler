@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pref_widget_ring_style">Estilo Ring</string>
+    <string name="pref_widget_ring_style_summary">Widgets modernos com anel, tempo no alvo e gráfico de pontos. Desliga para voltar ao visual clássico.</string>
+</resources>

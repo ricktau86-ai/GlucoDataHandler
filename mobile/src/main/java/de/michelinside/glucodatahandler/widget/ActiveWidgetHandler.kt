@@ -109,6 +109,7 @@ object ActiveWidgetHandler: NotifierInterface, SharedPreferences.OnSharedPrefere
             if (GlucoDataService.context != null) {
                 when (key) {
                     Constants.SHARED_PREF_WIDGET_TRANSPARENCY,
+                    GlucoseBaseWidget.RING_STYLE_PREF,
                     Constants.SHARED_PREF_WIDGET_TAP_ACTION -> {
                         OnNotifyData(GlucoDataService.context!!, NotifySource.SETTINGS, null)
                     }

@@ -11,6 +11,12 @@ if (project.rootProject.file('local.properties').exists()) {
 
 android {
     signingConfigs {
+        ring {
+            storeFile rootProject.file('keystore/ring.jks')
+            storePassword System.getenv('RING_STORE_PASSWORD') ?: 'gdhring2026'
+            keyAlias 'ring'
+            keyPassword System.getenv('RING_KEY_PASSWORD') ?: 'gdhring2026'
+        }
         release {
             if (properties.containsKey('keystore.file')) {
                 storeFile file(properties.getProperty('keystore.file'))
@@ -56,6 +62,15 @@ android {
         debug {
             minifyEnabled false
             resValue "string", "app_name", "GlucoDataHandler"
+        }
+        ring {
+            applicationIdSuffix '.ring'
+            versionNameSuffix '-ring'
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            resValue "string", "app_name", "GDH Ring"
+            signingConfig signingConfigs.ring
+            matchingFallbacks = ['release']
         }
         second {
             applicationIdSuffix '.second'

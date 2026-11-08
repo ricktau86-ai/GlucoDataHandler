@@ -50,17 +50,19 @@ object RingWidgetRenderer {
         val filled: Boolean
     )
 
+    /** "Rosa Chiclete" palette: pink cards, bordeaux ink; every out-of-range state fills the whole card. */
+    @Suppress("UNUSED_PARAMETER")
     private class Colors(dark: Boolean) {
-        val green = if (dark) 0xFF4ADE80.toInt() else 0xFF15803D.toInt()
-        val amber = if (dark) 0xFFFBBF24.toInt() else 0xFFD97706.toInt()
-        val red = if (dark) 0xFFF87171.toInt() else 0xFFB91C1C.toInt()
-        val card = if (dark) 0xFF1E1D1C.toInt() else 0xFFFFFFFF.toInt()
-        val ink = if (dark) 0xFFF5F5F4.toInt() else 0xFF1C1917.toInt()
-        val sub = if (dark) 0xFFB5AFA9.toInt() else 0xFF57534E.toInt()
-        val track = if (dark) 0xFF3A3836.toInt() else 0xFFECE7DF.toInt()
-        val grid = if (dark) 0xFF3A3836.toInt() else 0xFFE7E5E4.toInt()
-        val obsCard = if (dark) 0xFF2A2928.toInt() else 0xFFE7E5E4.toInt()
-        val obsInk = if (dark) 0xFF9C9690.toInt() else 0xFF78716C.toInt()
+        val green = 0xFF831843.toInt()   // in range accent (bordeaux)
+        val amber = 0xFFB45309.toInt()
+        val red = 0xFFDC2626.toInt()
+        val card = 0xFFF9A8D4.toInt()
+        val ink = 0xFF500724.toInt()
+        val sub = 0xFF6B0F3A.toInt()
+        val track = 0xFFFBCFE8.toInt()
+        val grid = 0xFFFBCFE8.toInt()
+        val obsCard = 0xFFF5F5F4.toInt()
+        val obsInk = 0xFF78716C.toInt()
     }
 
     // ---------- history cache (shared by all widgets) ----------
@@ -119,11 +121,11 @@ object RingWidgetRenderer {
 
     private fun getPalette(zone: Zone, c: Colors): Palette {
         return when (zone) {
-            Zone.VERY_LOW -> Palette(0xFFB91C1C.toInt(), 0xFFFFFFFF.toInt(), 0xFFFECACA.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
+            Zone.VERY_LOW -> Palette(0xFF7F1D1D.toInt(), 0xFFFFFFFF.toInt(), 0xFFFECACA.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
+            Zone.LOW -> Palette(0xFFDC2626.toInt(), 0xFFFFFFFF.toInt(), 0xFFFEE2E2.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
             Zone.VERY_HIGH -> Palette(0xFFF59E0B.toInt(), 0xFF1C1917.toInt(), 0xFF451A03.toInt(), 0x33000000, 0xFF1C1917.toInt(), true)
-            Zone.LOW -> Palette(c.card, c.ink, c.sub, c.track, c.red, false)
-            Zone.HIGH -> Palette(c.card, c.ink, c.sub, c.track, c.amber, false)
-            Zone.OBSOLETE -> Palette(c.obsCard, c.obsInk, c.obsInk, c.track, c.obsInk, false)
+            Zone.HIGH -> Palette(0xFFFDE68A.toInt(), 0xFF1C1917.toInt(), 0xFF713F12.toInt(), 0x33000000, 0xFF1C1917.toInt(), true)
+            Zone.OBSOLETE -> Palette(c.obsCard, c.obsInk, c.obsInk, 0xFFD6D3D1.toInt(), c.obsInk, false)
             Zone.OK -> Palette(c.card, c.ink, c.sub, c.track, c.green, false)
         }
     }

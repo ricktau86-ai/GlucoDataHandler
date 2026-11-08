@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="pref_widget_ring_style">Ring style</string>
-    <string name="pref_widget_ring_style_summary">Modern widgets with gauge ring, time in range and dot chart. Turn off for the classic look.</string>
+    <string name="pref_widget_ring_style">Widget style</string>
+    <string-array name="pref_widget_style_labels">
+        <item>Ring</item>
+        <item>Ring Pink</item>
+        <item>Classic</item>
+    </string-array>
+    <string-array name="pref_widget_style_values" translatable="false">
+        <item>ring</item>
+        <item>pink</item>
+        <item>classic</item>
+    </string-array>
 </resources>

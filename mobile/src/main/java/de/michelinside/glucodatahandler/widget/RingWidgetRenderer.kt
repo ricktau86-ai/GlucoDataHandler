@@ -50,19 +50,18 @@ object RingWidgetRenderer {
         val filled: Boolean
     )
 
-    /** "Rosa Chiclete" palette: pink cards, bordeaux ink; every out-of-range state fills the whole card. */
-    @Suppress("UNUSED_PARAMETER")
-    private class Colors(dark: Boolean) {
-        val green = 0xFF831843.toInt()   // in range accent (bordeaux)
-        val amber = 0xFFB45309.toInt()
-        val red = 0xFFDC2626.toInt()
-        val card = 0xFFF9A8D4.toInt()
-        val ink = 0xFF500724.toInt()
-        val sub = 0xFF6B0F3A.toInt()
-        val track = 0xFFFBCFE8.toInt()
-        val grid = 0xFFFBCFE8.toInt()
-        val obsCard = 0xFFF5F5F4.toInt()
-        val obsInk = 0xFF78716C.toInt()
+    /** pink = "Rosa Chiclete" (pink cards, bordeaux ink); otherwise the original green Ring palette (light/dark). */
+    private class Colors(dark: Boolean, val pink: Boolean) {
+        val green = if (pink) 0xFF831843.toInt() else if (dark) 0xFF4ADE80.toInt() else 0xFF15803D.toInt()
+        val amber = if (pink) 0xFFB45309.toInt() else if (dark) 0xFFFBBF24.toInt() else 0xFFD97706.toInt()
+        val red = if (pink) 0xFFDC2626.toInt() else if (dark) 0xFFF87171.toInt() else 0xFFB91C1C.toInt()
+        val card = if (pink) 0xFFF9A8D4.toInt() else if (dark) 0xFF1E1D1C.toInt() else 0xFFFFFFFF.toInt()
+        val ink = if (pink) 0xFF500724.toInt() else if (dark) 0xFFF5F5F4.toInt() else 0xFF1C1917.toInt()
+        val sub = if (pink) 0xFF6B0F3A.toInt() else if (dark) 0xFFB5AFA9.toInt() else 0xFF57534E.toInt()
+        val track = if (pink) 0xFFFBCFE8.toInt() else if (dark) 0xFF3A3836.toInt() else 0xFFECE7DF.toInt()
+        val grid = if (pink) 0xFFFBCFE8.toInt() else if (dark) 0xFF3A3836.toInt() else 0xFFE7E5E4.toInt()
+        val obsCard = if (pink) 0xFFF5F5F4.toInt() else if (dark) 0xFF2A2928.toInt() else 0xFFE7E5E4.toInt()
+        val obsInk = if (dark && !pink) 0xFF9C9690.toInt() else 0xFF78716C.toInt()
     }
 
     // ---------- history cache (shared by all widgets) ----------
@@ -120,12 +119,23 @@ object RingWidgetRenderer {
     }
 
     private fun getPalette(zone: Zone, c: Colors): Palette {
+        if (c.pink) {
+            // every out-of-range state fills the whole card so it never blends with the pink
+            return when (zone) {
+                Zone.VERY_LOW -> Palette(0xFF7F1D1D.toInt(), 0xFFFFFFFF.toInt(), 0xFFFECACA.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
+                Zone.LOW -> Palette(0xFFDC2626.toInt(), 0xFFFFFFFF.toInt(), 0xFFFEE2E2.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
+                Zone.VERY_HIGH -> Palette(0xFFF59E0B.toInt(), 0xFF1C1917.toInt(), 0xFF451A03.toInt(), 0x33000000, 0xFF1C1917.toInt(), true)
+                Zone.HIGH -> Palette(0xFFFDE68A.toInt(), 0xFF1C1917.toInt(), 0xFF713F12.toInt(), 0x33000000, 0xFF1C1917.toInt(), true)
+                Zone.OBSOLETE -> Palette(c.obsCard, c.obsInk, c.obsInk, 0xFFD6D3D1.toInt(), c.obsInk, false)
+                Zone.OK -> Palette(c.card, c.ink, c.sub, c.track, c.green, false)
+            }
+        }
         return when (zone) {
-            Zone.VERY_LOW -> Palette(0xFF7F1D1D.toInt(), 0xFFFFFFFF.toInt(), 0xFFFECACA.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
-            Zone.LOW -> Palette(0xFFDC2626.toInt(), 0xFFFFFFFF.toInt(), 0xFFFEE2E2.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
+            Zone.VERY_LOW -> Palette(0xFFB91C1C.toInt(), 0xFFFFFFFF.toInt(), 0xFFFECACA.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
             Zone.VERY_HIGH -> Palette(0xFFF59E0B.toInt(), 0xFF1C1917.toInt(), 0xFF451A03.toInt(), 0x33000000, 0xFF1C1917.toInt(), true)
-            Zone.HIGH -> Palette(0xFFFDE68A.toInt(), 0xFF1C1917.toInt(), 0xFF713F12.toInt(), 0x33000000, 0xFF1C1917.toInt(), true)
-            Zone.OBSOLETE -> Palette(c.obsCard, c.obsInk, c.obsInk, 0xFFD6D3D1.toInt(), c.obsInk, false)
+            Zone.LOW -> Palette(c.card, c.ink, c.sub, c.track, c.red, false)
+            Zone.HIGH -> Palette(c.card, c.ink, c.sub, c.track, c.amber, false)
+            Zone.OBSOLETE -> Palette(c.obsCard, c.obsInk, c.obsInk, c.track, c.obsInk, false)
             Zone.OK -> Palette(c.card, c.ink, c.sub, c.track, c.green, false)
         }
     }
@@ -167,7 +177,7 @@ object RingWidgetRenderer {
     fun getContentDescription(context: Context): String =
         try { ReceiveData.getAsText(context, true) } catch (exc: Exception) { "" }
 
-    fun render(context: Context, spec: Spec, widthDp: Int, heightDp: Int, transparency: Int): Bitmap {
+    fun render(context: Context, spec: Spec, widthDp: Int, heightDp: Int, transparency: Int, pink: Boolean = false): Bitmap {
         val wDp = if (widthDp > 0) widthDp else 110
         val hDp = if (heightDp > 0) heightDp else 110
         var density = context.resources.displayMetrics.density
@@ -178,7 +188,7 @@ object RingWidgetRenderer {
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         try {
             val canvas = Canvas(bitmap)
-            val c = Colors(isDark(context))
+            val c = Colors(isDark(context), pink)
             val zone = getZone()
             val p = getPalette(zone, c)
             val d = density

@@ -49,7 +49,7 @@ abstract class GlucoseBaseWidget(private val type: WidgetType,
 
     companion object {
         private const val LOG_ID = "GDH.widget.GlucoseBaseWidget"
-        const val RING_STYLE_PREF = "widget_ring_style"
+        const val RING_STYLE_PREF = "widget_style"
 
         protected fun getCurrentWidgetIds(context: Context, type: WidgetType): IntArray {
             val component = ComponentName(
@@ -194,7 +194,8 @@ abstract class GlucoseBaseWidget(private val type: WidgetType,
         val remoteViews = RemoteViews(context.packageName, R.layout.ring_widget)
         val sharedPref = context.getSharedPreferences(Constants.SHARED_PREF_TAG, Context.MODE_PRIVATE)
         val spec = RingWidgetRenderer.Spec(hasTrend, hasDelta, hasTime, hasIobCob, hasOtherUnit, hasGraph)
-        val bitmap = RingWidgetRenderer.render(context, spec, width, height, sharedPref.getInt(Constants.SHARED_PREF_WIDGET_TRANSPARENCY, 3))
+        val pink = sharedPref.getString(RING_STYLE_PREF, "ring") == "pink"
+        val bitmap = RingWidgetRenderer.render(context, spec, width, height, sharedPref.getInt(Constants.SHARED_PREF_WIDGET_TRANSPARENCY, 3), pink)
         remoteViews.setImageViewBitmap(R.id.ring_image, bitmap)
         remoteViews.setContentDescription(R.id.ring_image, RingWidgetRenderer.getContentDescription(context))
         return remoteViews
@@ -202,7 +203,7 @@ abstract class GlucoseBaseWidget(private val type: WidgetType,
 
     private fun getRemoteViews(context: Context, width: Int, height: Int, appWidgetId: Int): RemoteViews {
         val ringPref = context.getSharedPreferences(Constants.SHARED_PREF_TAG, Context.MODE_PRIVATE)
-        if (ringPref.getBoolean(RING_STYLE_PREF, true)) {
+        if (ringPref.getString(RING_STYLE_PREF, "ring") != "classic") {
             try {
                 return getRingRemoteViews(context, width, height)
             } catch (exc: Exception) {

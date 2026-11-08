@@ -25,7 +25,12 @@ jobs:
       - name: Build ring APK
         run: |
           chmod +x gradlew
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          {
+            echo "sdk.dir=$ANDROID_HOME"
+            echo 'DEXCOM_APPLICATION_ID="d89443d2-327c-4a6f-89e5-496bbb0317db"'
+            echo 'DEXCOM_APPLICATION_ID_APAC="d8665ade-9673-4e27-9ff6-92db4ce13d13"'
+            echo 'NIGHTSCOUT_DEBUG_SERVER=""'
+          } > local.properties
           ./gradlew :mobile:assembleRing --stacktrace --no-configuration-cache
 
       - name: Find APK

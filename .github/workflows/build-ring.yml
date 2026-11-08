@@ -38,6 +38,7 @@ jobs:
         run: |
           APK=$(find mobile/build/outputs/apk/ring -name "*.apk" | head -n 1)
           cp "$APK" GDH_Ring.apk
+          zip -j GDH_Ring.zip GDH_Ring.apk
           echo "file=GDH_Ring.apk" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
@@ -51,5 +52,7 @@ jobs:
           tag_name: ring-${{ github.run_number }}
           name: GDH Ring build ${{ github.run_number }}
           body: Widgets estilo Ring. Instala ao lado da GlucoDataHandler original (pacote de.michelinside.glucodatahandler.ring).
-          files: GDH_Ring.apk
+          files: |
+            GDH_Ring.apk
+            GDH_Ring.zip
           make_latest: true

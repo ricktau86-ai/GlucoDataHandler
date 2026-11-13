@@ -9,6 +9,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
+import de.michelinside.glucodatahandler.common.GlucoDataService
 import de.michelinside.glucodatahandler.common.ReceiveData
 import de.michelinside.glucodatahandler.common.database.GlucoseValue
 import de.michelinside.glucodatahandler.common.database.dbAccess
@@ -29,6 +30,9 @@ object RingWidgetRenderer {
     private const val MAX_PIXELS = 1_500_000
     private const val CHART_HOURS = 3
     private const val TIR_HOURS = 24
+    private const val HISTORY_DAYS = 7
+
+    enum class Kind { STANDARD, MINI, FORECAST, DAY, PARENTS, NIGHT, LOWS }
 
     class Spec(
         val hasTrend: Boolean,
@@ -74,7 +78,7 @@ object RingWidgetRenderer {
         if (cacheKey == ReceiveData.time && now - cacheTime < 60_000L)
             return
         history = try {
-            dbAccess.getGlucoseValues(now - TIR_HOURS * 3_600_000L)
+            dbAccess.getGlucoseValues(now - HISTORY_DAYS * 86_400_000L)
         } catch (exc: Exception) {
             Log.e(LOG_ID, "loadHistory exception: " + exc.message.toString())
             emptyList()
@@ -101,7 +105,10 @@ object RingWidgetRenderer {
         val values = if (tirToday) {
             val start = startOfToday()
             history.filter { it.timestamp >= start }
-        } else history
+        } else {
+            val start = System.currentTimeMillis() - TIR_HOURS * 3_600_000L
+            history.filter { it.timestamp >= start }
+        }
         if (values.size < (if (tirToday) 3 else 12))
             return null
         val minT = ReceiveData.targetMinRaw
@@ -196,7 +203,7 @@ object RingWidgetRenderer {
     fun getContentDescription(context: Context): String =
         try { ReceiveData.getAsText(context, true) } catch (exc: Exception) { "" }
 
-    fun render(context: Context, spec: Spec, widthDp: Int, heightDp: Int, transparency: Int, pink: Boolean = false, today: Boolean = false): Bitmap {
+    fun render(context: Context, spec: Spec, widthDp: Int, heightDp: Int, transparency: Int, pink: Boolean = false, today: Boolean = false, kind: Kind = Kind.STANDARD): Bitmap {
         tirToday = today
         val wDp = if (widthDp > 0) widthDp else 110
         val hDp = if (heightDp > 0) heightDp else 110
@@ -210,7 +217,7 @@ object RingWidgetRenderer {
             val canvas = Canvas(bitmap)
             val c = Colors(isDark(context), pink)
             val zone = getZone()
-            val p = getPalette(zone, c)
+            val p = if (kind == Kind.DAY || kind == Kind.NIGHT || kind == Kind.LOWS) getPalette(Zone.OK, c) else getPalette(zone, c)
             val d = density
             loadHistory()
 
@@ -228,6 +235,12 @@ object RingWidgetRenderer {
 
             val ratio = wDp.toFloat() / hDp.toFloat()
             when {
+                kind == Kind.MINI -> drawMiniLayout(context, canvas, w, h, d, p, zone)
+                kind == Kind.FORECAST -> drawForecastLayout(context, canvas, w, h, d, p, c, zone)
+                kind == Kind.DAY -> drawDayLayout(context, canvas, w, h, d, p, c)
+                kind == Kind.PARENTS -> drawParentsLayout(context, canvas, w, h, d, p, c, zone)
+                kind == Kind.NIGHT -> drawNightLayout(context, canvas, w, h, d, p, c)
+                kind == Kind.LOWS -> drawLowsLayout(context, canvas, w, h, d, p, c)
                 spec.hasGraph && hDp >= 110 && wDp >= 150 -> drawChartLayout(context, canvas, spec, w, h, d, p, c, zone)
                 ratio >= 1.6F && hDp >= 50 -> drawWideLayout(context, canvas, spec, w, h, d, p, c, zone)
                 else -> drawCompactLayout(context, canvas, spec, w, h, d, p, zone)
@@ -571,5 +584,372 @@ object RingWidgetRenderer {
         canvas.drawCircle(lx, ly, dotR * 3F, dot)
         dot.alpha = 255
         canvas.drawCircle(lx, ly, dotR * 1.7F, dot)
+    }
+
+    // =====================================================================
+    // Extra widgets: mini, forecast, day bars, parents, night summary, lows
+    // =====================================================================
+
+    private fun lowLimit(): Float =
+        if (ReceiveData.lowRaw > 0F) ReceiveData.lowRaw else ReceiveData.targetMinRaw
+
+    private fun fmtGlucose(mg: Float): String =
+        if (ReceiveData.isMmol) String.format(Locale.getDefault(), "%.1f", GlucoDataUtils.mgToMmol(mg)) else Math.round(mg).toString()
+
+    private fun hhmm(time: Long): String =
+        java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(java.util.Date(time))
+
+    private fun dayStart(daysAgo: Int): Long {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        cal.add(java.util.Calendar.DAY_OF_YEAR, -daysAgo)
+        return cal.timeInMillis
+    }
+
+    private fun whenText(context: Context, time: Long): String {
+        val pt = isPt(context)
+        return when {
+            time >= dayStart(0) -> (if (pt) "hoje " else "today ") + hhmm(time)
+            time >= dayStart(1) -> (if (pt) "ontem " else "yesterday ") + hhmm(time)
+            else -> java.text.SimpleDateFormat("EEE HH:mm", context.resources.configuration.locales[0]).format(java.util.Date(time))
+        }
+    }
+
+    private class LowEpisode(val start: Long, val end: Long, val min: Int, val minTime: Long)
+
+    /** consecutive values below the low limit form one episode */
+    private fun lowEpisodes(values: List<GlucoseValue>): List<LowEpisode> {
+        val limit = lowLimit()
+        val result = ArrayList<LowEpisode>()
+        var inLow = false
+        var start = 0L
+        var last = 0L
+        var mn = 0
+        var mnTime = 0L
+        values.sortedBy { it.timestamp }.forEach {
+            if (it.value < limit) {
+                if (!inLow || it.timestamp - last > 30 * 60_000L) {
+                    if (inLow) result.add(LowEpisode(start, last + 5 * 60_000L, mn, mnTime))
+                    inLow = true
+                    start = it.timestamp
+                    mn = it.value
+                    mnTime = it.timestamp
+                } else if (it.value < mn) {
+                    mn = it.value
+                    mnTime = it.timestamp
+                }
+                last = it.timestamp
+            } else if (inLow) {
+                result.add(LowEpisode(start, max(last + 5 * 60_000L, it.timestamp), mn, mnTime))
+                inLow = false
+            }
+        }
+        if (inLow) result.add(LowEpisode(start, last + 5 * 60_000L, mn, mnTime))
+        return result
+    }
+
+    /** slope in mg/dL per minute from the last 15 minutes (least squares); falls back to the source rate */
+    private fun recentSlope(): Float {
+        val now = System.currentTimeMillis()
+        val pts = history.filter { it.timestamp >= now - 16 * 60_000L }
+        if (pts.size >= 3) {
+            val t0 = pts.minOf { it.timestamp }
+            val xs = pts.map { (it.timestamp - t0) / 60_000F }
+            val ys = pts.map { it.value.toFloat() }
+            val mx = xs.average().toFloat()
+            val my = ys.average().toFloat()
+            var num = 0F
+            var den = 0F
+            for (i in xs.indices) {
+                num += (xs[i] - mx) * (ys[i] - my)
+                den += (xs[i] - mx) * (xs[i] - mx)
+            }
+            if (den > 0F) return num / den
+        }
+        return ReceiveData.rate
+    }
+
+    private fun trendWord(context: Context, slope: Float): String {
+        val pt = isPt(context)
+        return when {
+            slope.isNaN() -> ""
+            slope >= 1F -> if (pt) "a subir" else "rising"
+            slope <= -1F -> if (pt) "a descer" else "falling"
+            else -> if (pt) "estável" else "stable"
+        }
+    }
+
+    private fun drawTile(canvas: Canvas, rect: RectF, label: String, value: String, valueColor: Int, p: Palette, c: Colors, d: Float) {
+        val bg = Paint(Paint.ANTI_ALIAS_FLAG)
+        bg.color = if (p.filled) 0x33FFFFFF else c.track
+        val r = min(rect.height() * 0.28F, 14F * d)
+        canvas.drawRoundRect(rect, r, r, bg)
+        val padX = rect.height() * 0.16F
+        val lPaint = fit(textPaint(regular, p.sub, rect.height() * 0.24F), label, rect.width() - padX * 2F, rect.height() * 0.24F)
+        canvas.drawText(label, rect.left + padX, rect.top + rect.height() * 0.38F, lPaint)
+        val vPaint = fit(textPaint(heavy, valueColor, rect.height() * 0.36F), value, rect.width() - padX * 2F, rect.height() * 0.36F)
+        canvas.drawText(value, rect.left + padX, rect.bottom - rect.height() * 0.18F, vPaint)
+    }
+
+    // ---------- 1 · mini ----------
+    private fun drawMiniLayout(context: Context, canvas: Canvas, w: Int, h: Int, d: Float, p: Palette, zone: Zone) {
+        val size = min(w, h).toFloat()
+        val cx = w / 2F
+        val cy = h / 2F
+        val text = ReceiveData.getGlucoseAsString()
+        if (p.filled || zone == Zone.OBSOLETE) {
+            val label = zoneLabel(context, zone).uppercase(Locale.getDefault())
+            val numPaint = fit(textPaint(heavy, p.ink, size * 0.36F, Paint.Align.CENTER), text, size * 0.8F, size * 0.36F)
+            if (zone == Zone.OBSOLETE) numPaint.isStrikeThruText = !ReceiveData.isObsoleteLong()
+            canvas.drawText(text, cx, cy + numPaint.textSize * 0.15F, numPaint)
+            val lPaint = fit(textPaint(medium, p.ink, size * 0.12F, Paint.Align.CENTER), label, size * 0.8F, size * 0.12F)
+            canvas.drawText(label, cx, cy + numPaint.textSize * 0.15F + lPaint.textSize * 1.6F, lPaint)
+            return
+        }
+        val stroke = max(2.5F * d, size * 0.085F)
+        val r = size / 2F - size * 0.08F - stroke / 2F
+        drawGauge(canvas, RectF(cx - r, cy - r, cx + r, cy + r), stroke, p, zone)
+        val inner = (r - stroke) * 2F
+        val numPaint = fit(textPaint(heavy, p.ink, inner * 0.46F, Paint.Align.CENTER), text, inner * 0.86F, inner * 0.46F)
+        canvas.drawText(text, cx, cy + numPaint.textSize * 0.2F, numPaint)
+        if (size >= 64F * d)
+            drawArrow(canvas, cx, cy + r * 0.66F, inner * 0.2F, p.accent)
+    }
+
+    // ---------- 2 · forecast 20 min ----------
+    private fun drawForecastLayout(context: Context, canvas: Canvas, w: Int, h: Int, d: Float, p: Palette, c: Colors, zone: Zone) {
+        val pt = isPt(context)
+        val pad = min(h * 0.14F, 20F * d)
+        val text = ReceiveData.getGlucoseAsString()
+        val unit = min(h * 0.32F, w * 0.16F)
+        val numPaint = fit(textPaint(heavy, p.ink, unit, Paint.Align.LEFT), text, w * 0.4F, unit)
+        val numY = pad + numPaint.textSize * 0.9F
+        canvas.drawText(text, pad, numY, numPaint)
+
+        val slope = if (zone == Zone.OBSOLETE) Float.NaN else recentSlope()
+        val slopeTxt = if (slope.isNaN()) "" else String.format(Locale.getDefault(), "%+.1f/min", if (ReceiveData.isMmol) GlucoDataUtils.mgToMmol(slope) else slope)
+        val head = (if (pt) "agora" else "now") + (if (slope.isNaN()) "" else " · " + trendWord(context, slope) + " " + slopeTxt)
+        val hPaint = fit(textPaint(regular, p.sub, unit * 0.32F, Paint.Align.RIGHT), head, w - pad * 3F - numPaint.measureText(text), unit * 0.32F)
+        canvas.drawText(head, w - pad, numY, hPaint)
+
+        if (slope.isNaN()) {
+            val msg = if (pt) "Sem tendência suficiente para estimar" else "Not enough trend data"
+            val mPaint = fit(textPaint(medium, p.sub, unit * 0.32F), msg, w - pad * 2F, unit * 0.32F)
+            canvas.drawText(msg, pad, h - pad, mPaint)
+            return
+        }
+        val now = ReceiveData.rawValue.toFloat()
+        val pred = (now + slope * 20F).coerceIn(39F, 400F)
+        val predColor = if (p.filled) p.ink else valueColor(Math.round(pred), c)
+        val predTxt = "≈ " + fmtGlucose(pred)
+        val pPaint = textPaint(heavy, predColor, unit * 0.55F, Paint.Align.RIGHT)
+        val barY = numY + (h - pad - numY) * 0.42F
+        canvas.drawText(predTxt, w - pad, barY + pPaint.textSize * 0.36F, pPaint)
+        val barRight = w - pad * 1.6F - pPaint.measureText(predTxt)
+        val barH = max(6F * d, unit * 0.18F)
+        val bar = Paint(Paint.ANTI_ALIAS_FLAG)
+        val startColor = if (p.filled) p.accent else valueColor(Math.round(now), c)
+        bar.shader = android.graphics.LinearGradient(pad, 0F, barRight, 0F, startColor, predColor, android.graphics.Shader.TileMode.CLAMP)
+        canvas.drawRoundRect(RectF(pad, barY - barH / 2F, max(pad + barH, barRight), barY + barH / 2F), barH / 2F, barH / 2F, bar)
+
+        val msg = when {
+            pred < lowLimit() -> if (pt) "Em 20 min pode descer abaixo de " + fmtGlucose(lowLimit()) else "Could drop below " + fmtGlucose(lowLimit()) + " in 20 min"
+            pred < ReceiveData.targetMinRaw -> if (pt) "Em 20 min pode ficar abaixo do alvo" else "Could go below target in 20 min"
+            pred > ReceiveData.targetMaxRaw -> if (pt) "Em 20 min pode passar de " + fmtGlucose(ReceiveData.targetMaxRaw) else "Could pass " + fmtGlucose(ReceiveData.targetMaxRaw) + " in 20 min"
+            else -> if (pt) "Deve manter-se no alvo" else "Should stay in range"
+        } + (if (pt) " (estimativa)" else " (estimate)")
+        val mColor = if (p.filled) p.ink else if (pred < ReceiveData.targetMinRaw) c.red else if (pred > ReceiveData.targetMaxRaw) c.amber else p.sub
+        val mPaint = fit(textPaint(medium, mColor, unit * 0.3F), msg, w - pad * 2F, unit * 0.3F)
+        canvas.drawText(msg, pad, h - pad, mPaint)
+    }
+
+    // ---------- 3 · the day in 24 bars ----------
+    private fun drawDayLayout(context: Context, canvas: Canvas, w: Int, h: Int, d: Float, p: Palette, c: Colors) {
+        val pt = isPt(context)
+        val pad = min(h * 0.12F, 20F * d)
+        val start = dayStart(0)
+        val values = history.filter { it.timestamp >= start }
+        val titleSize = min(h * 0.14F, 18F * d)
+        val title = if (pt) "Hoje" else "Today"
+        val tPaint = textPaint(heavy, p.ink, titleSize)
+        canvas.drawText(title, pad, pad + titleSize, tPaint)
+        if (values.isNotEmpty()) {
+            val inRange = values.count { it.value >= ReceiveData.targetMinRaw && it.value <= ReceiveData.targetMaxRaw }
+            val pct = Math.round(inRange * 100F / values.size)
+            val avg = values.map { it.value }.average().toFloat()
+            val info = pct.toString() + "% " + (if (pt) "no alvo · média " else "in range · avg ") + fmtGlucose(avg)
+            val iPaint = fit(textPaint(medium, p.sub, titleSize * 0.8F, Paint.Align.RIGHT), info, w - pad * 3F - tPaint.measureText(title), titleSize * 0.8F)
+            canvas.drawText(info, w - pad, pad + titleSize, iPaint)
+        }
+        val labelSize = max(8F * d, titleSize * 0.62F)
+        val top = pad + titleSize * 1.6F
+        val bottom = h - pad - labelSize * 1.4F
+        val gap = max(1.5F * d, (w - pad * 2F) / 24F * 0.18F)
+        val bw = ((w - pad * 2F) - gap * 23F) / 24F
+        val bar = Paint(Paint.ANTI_ALIAS_FLAG)
+        val nowHour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        for (hour in 0..23) {
+            val hs = start + hour * 3_600_000L
+            val vals = values.filter { it.timestamp >= hs && it.timestamp < hs + 3_600_000L }
+            val x = pad + hour * (bw + gap)
+            if (vals.isEmpty()) {
+                bar.color = c.track
+                val stub = max(3F * d, (bottom - top) * 0.1F)
+                canvas.drawRoundRect(RectF(x, bottom - stub, x + bw, bottom), bw * 0.3F, bw * 0.3F, bar)
+                continue
+            }
+            val avg = vals.map { it.value }.average().toFloat()
+            val frac = ((avg - 40F) / 260F).coerceIn(0.12F, 1F)
+            bar.color = valueColor(Math.round(avg), c)
+            if (hour == nowHour) bar.alpha = 170
+            canvas.drawRoundRect(RectF(x, bottom - (bottom - top) * frac, x + bw, bottom), bw * 0.3F, bw * 0.3F, bar)
+            bar.alpha = 255
+        }
+        val lPaint = textPaint(regular, p.sub, labelSize, Paint.Align.CENTER)
+        listOf(0, 6, 12, 18, 23).forEach {
+            val x = pad + it * (bw + gap) + bw / 2F
+            canvas.drawText(String.format(Locale.getDefault(), "%02dh", it), x, h - pad, lPaint)
+        }
+    }
+
+    // ---------- 4 · for the parents ----------
+    private fun drawParentsLayout(context: Context, canvas: Canvas, w: Int, h: Int, d: Float, p: Palette, c: Colors, zone: Zone) {
+        val pt = isPt(context)
+        val pad = min(h * 0.14F, 20F * d)
+        val name = GlucoDataService.patientName?.trim().orEmpty()
+        val showRight = w >= 240F * d
+        val avatar = min(h - pad * 2F, 64F * d)
+        var x = pad
+        if (h >= 70F * d) {
+            val circle = Paint(Paint.ANTI_ALIAS_FLAG)
+            circle.color = p.accent
+            circle.alpha = if (p.filled) 60 else 45
+            val acx = pad + avatar / 2F
+            canvas.drawCircle(acx, h / 2F, avatar / 2F, circle)
+            val initial = if (name.isNotEmpty()) name.substring(0, 1).uppercase(Locale.getDefault()) else "♥"
+            val iPaint = textPaint(heavy, if (p.filled) p.ink else p.accent, avatar * 0.42F, Paint.Align.CENTER)
+            canvas.drawText(initial, acx, h / 2F + iPaint.textSize * 0.36F, iPaint)
+            x += avatar + pad * 0.8F
+        }
+        val rightW = if (showRight) w * 0.28F else 0F
+        val avail = w - x - pad - rightW
+        val nameSize = h * 0.13F
+        val nPaint = fit(textPaint(medium, p.ink, nameSize), if (name.isNotEmpty()) name else (if (pt) "Glicose" else "Glucose"), avail, nameSize)
+        canvas.drawText(if (name.isNotEmpty()) name else (if (pt) "Glicose" else "Glucose"), x, pad + nameSize, nPaint)
+        val text = ReceiveData.getGlucoseAsString()
+        val numPaint = fit(textPaint(heavy, p.ink, h * 0.36F), text, avail * 0.7F, h * 0.36F)
+        if (zone == Zone.OBSOLETE) numPaint.isStrikeThruText = !ReceiveData.isObsoleteLong()
+        val numY = h / 2F + numPaint.textSize * 0.38F
+        canvas.drawText(text, x, numY, numPaint)
+        val aSize = numPaint.textSize * 0.5F
+        drawArrow(canvas, x + numPaint.measureText(text) + aSize * 0.9F, numY - numPaint.textSize * 0.34F, aSize, p.accent)
+        val slope = if (zone == Zone.OBSOLETE) Float.NaN else recentSlope()
+        val phrase = when (zone) {
+            Zone.OK -> when {
+                !slope.isNaN() && slope >= 1F -> if (pt) "a subir" else "rising"
+                !slope.isNaN() && slope <= -1F -> if (pt) "a descer" else "falling"
+                else -> if (pt) "tudo bem" else "all good"
+            }
+            else -> zoneLabel(context, zone).lowercase(Locale.getDefault())
+        } + " · " + ReceiveData.getElapsedTimeMinuteAsString(context)
+        val phPaint = fit(textPaint(regular, p.sub, h * 0.12F), phrase, avail, h * 0.12F)
+        canvas.drawText(phrase, x, h - pad, phPaint)
+
+        if (showRight) {
+            val last = lowEpisodes(history).lastOrNull()
+            val label = if (pt) "última baixa" else "last low"
+            val value = if (last != null) whenText(context, last.start) else (if (pt) "nenhuma em 7 dias" else "none in 7 days")
+            val lPaint = fit(textPaint(regular, p.sub, h * 0.11F, Paint.Align.RIGHT), label, rightW, h * 0.11F)
+            val vPaint = fit(textPaint(heavy, p.ink, h * 0.14F, Paint.Align.RIGHT), value, rightW, h * 0.14F)
+            canvas.drawText(label, w - pad, h / 2F - vPaint.textSize * 0.3F, lPaint)
+            canvas.drawText(value, w - pad, h / 2F + vPaint.textSize * 1.0F, vPaint)
+        }
+    }
+
+    // ---------- 5 · how the night went ----------
+    private fun drawNightLayout(context: Context, canvas: Canvas, w: Int, h: Int, d: Float, p: Palette, c: Colors) {
+        val pt = isPt(context)
+        val pad = min(h * 0.12F, 20F * d)
+        val now = System.currentTimeMillis()
+        val start = dayStart(0)
+        val nightMode = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) < 12
+        val end = if (nightMode) min(now, start + 7 * 3_600_000L) else now
+        val title = if (nightMode) (if (pt) "Noite 00h–07h" else "Night 00–07h") else (if (pt) "Hoje até agora" else "Today so far")
+        val values = history.filter { it.timestamp in start..end }
+        val titleSize = min(h * 0.15F, 18F * d)
+        val tPaint = fit(textPaint(heavy, p.ink, titleSize), title, w * 0.6F, titleSize)
+        canvas.drawText(title, pad, pad + titleSize, tPaint)
+        if (values.isEmpty()) {
+            val msg = if (pt) "Sem dados" else "No data"
+            canvas.drawText(msg, pad, h - pad, textPaint(medium, p.sub, titleSize * 0.8F))
+            return
+        }
+        val inRange = values.count { it.value >= ReceiveData.targetMinRaw && it.value <= ReceiveData.targetMaxRaw }
+        val pct = Math.round(inRange * 100F / values.size).toString() + "%"
+        val pctPaint = textPaint(heavy, c.green, titleSize * 1.25F, Paint.Align.RIGHT)
+        canvas.drawText(pct, w - pad, pad + titleSize * 1.05F, pctPaint)
+
+        val minV = values.minByOrNull { it.value }!!
+        val maxV = values.maxByOrNull { it.value }!!
+        val lows = lowEpisodes(values).size
+        val top = pad + titleSize * 1.9F
+        val tileH = h - pad - top
+        if (tileH < 24F * d) return
+        val gap = pad * 0.5F
+        val tileW = (w - pad * 2F - gap * 2F) / 3F
+        drawTile(canvas, RectF(pad, top, pad + tileW, top + tileH), if (pt) "mínimo " + hhmm(minV.timestamp) else "min " + hhmm(minV.timestamp),
+            fmtGlucose(minV.value.toFloat()), valueColor(minV.value, c), p, c, d)
+        drawTile(canvas, RectF(pad + tileW + gap, top, pad + tileW * 2F + gap, top + tileH), if (pt) "máximo " + hhmm(maxV.timestamp) else "max " + hhmm(maxV.timestamp),
+            fmtGlucose(maxV.value.toFloat()), valueColor(maxV.value, c), p, c, d)
+        drawTile(canvas, RectF(pad + (tileW + gap) * 2F, top, w - pad, top + tileH), if (pt) "baixas" else "lows",
+            lows.toString(), if (lows > 0) c.red else p.ink, p, c, d)
+    }
+
+    // ---------- 6 · low counter ----------
+    private fun drawLowsLayout(context: Context, canvas: Canvas, w: Int, h: Int, d: Float, p: Palette, c: Colors) {
+        val pt = isPt(context)
+        val pad = min(h * 0.14F, 20F * d)
+        val episodes = lowEpisodes(history)
+        var streak = 0
+        for (day in 0 until HISTORY_DAYS) {
+            val ds = dayStart(day)
+            val de = ds + 86_400_000L
+            if (episodes.any { it.start < de && it.end > ds }) break
+            streak++
+        }
+        val oldest = history.minOfOrNull { it.timestamp } ?: System.currentTimeMillis()
+        val full = streak >= HISTORY_DAYS || dayStart(streak) <= oldest
+        val streakTxt = streak.toString() + (if (full && streak > 0) "+" else "")
+
+        val leftW = min(w * 0.32F, h * 1.1F)
+        val numPaint = fit(textPaint(heavy, if (streak > 0) c.green else p.ink, h * 0.42F, Paint.Align.CENTER), streakTxt, leftW * 0.9F, h * 0.42F)
+        canvas.drawText(streakTxt, pad + leftW / 2F, h / 2F + numPaint.textSize * 0.2F, numPaint)
+        val cap = if (pt) (if (streak == 1) "dia sem baixas" else "dias sem baixas") else (if (streak == 1) "day without lows" else "days without lows")
+        val capPaint = fit(textPaint(regular, p.sub, h * 0.1F, Paint.Align.CENTER), cap, leftW, h * 0.1F)
+        canvas.drawText(cap, pad + leftW / 2F, h / 2F + numPaint.textSize * 0.2F + capPaint.textSize * 1.6F, capPaint)
+
+        val x = pad + leftW + pad * 0.6F
+        val right = w - pad
+        val todayLows = episodes.count { it.start >= dayStart(0) }
+        val weekLows = episodes.size
+        val weekMin = episodes.sumOf { (it.end - it.start) / 60_000L }
+        val lowest = episodes.minByOrNull { it.min }
+        val rows = listOf(
+            Pair(if (pt) "Hoje" else "Today", todayLows.toString() + (if (pt) " baixas" else " lows")),
+            Pair(if (pt) "7 dias" else "7 days", weekLows.toString() + (if (pt) " baixas · " else " lows · ") + weekMin + " min"),
+            Pair(if (pt) "Mais baixa" else "Lowest", if (lowest != null) fmtGlucose(lowest.min.toFloat()) + " · " + whenText(context, lowest.minTime).substringBefore(" ") else "—")
+        )
+        val rowH = (h - pad * 2F) / 3F
+        val size = min(rowH * 0.42F, 15F * d)
+        rows.forEachIndexed { i, row ->
+            val y = pad + rowH * i + rowH * 0.62F
+            val lp = textPaint(regular, p.sub, size)
+            canvas.drawText(row.first, x, y, lp)
+            val vp = fit(textPaint(heavy, p.ink, size, Paint.Align.RIGHT), row.second, right - x - lp.measureText(row.first) - pad * 0.5F, size)
+            canvas.drawText(row.second, right, y, vp)
+        }
     }
 }

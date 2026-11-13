@@ -202,6 +202,72 @@
                 android:resource="@xml/other_unit_widget_info" />
         </receiver>
         <receiver
+            android:name=".widget.RingMiniWidget"
+            android:label="@string/widget_ring_mini"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ring_mini_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.RingForecastWidget"
+            android:label="@string/widget_ring_forecast"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ring_forecast_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.RingDayWidget"
+            android:label="@string/widget_ring_day"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ring_day_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.RingParentsWidget"
+            android:label="@string/widget_ring_parents"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ring_parents_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.RingNightWidget"
+            android:label="@string/widget_ring_night"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ring_night_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.RingLowsWidget"
+            android:label="@string/widget_ring_lows"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ring_lows_widget_info" />
+        </receiver>
+        <receiver
             android:name=".widget.BatteryLevelWidget"
             android:exported="false"
             android:label="@string/widget_wearos_battery_level">

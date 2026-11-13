@@ -20,4 +20,10 @@
         <item>24h</item>
         <item>today</item>
     </string-array>
+    <string name="widget_ring_mini">Ring · Mini</string>
+    <string name="widget_ring_forecast">Ring · 20 min forecast</string>
+    <string name="widget_ring_day">Ring · Day in 24 hours</string>
+    <string name="widget_ring_parents">Ring · For parents</string>
+    <string name="widget_ring_night">Ring · How the night went</string>
+    <string name="widget_ring_lows">Ring · Low counter</string>
 </resources>

@@ -11,4 +11,10 @@
         <item>Últimas 24 horas</item>
         <item>Hoje (00:00–23:59)</item>
     </string-array>
+    <string name="widget_ring_mini">Ring · Mini</string>
+    <string name="widget_ring_forecast">Ring · Previsão 20 min</string>
+    <string name="widget_ring_day">Ring · O dia em 24 horas</string>
+    <string name="widget_ring_parents">Ring · Para os pais</string>
+    <string name="widget_ring_night">Ring · Como correu a noite</string>
+    <string name="widget_ring_lows">Ring · Contador de baixas</string>
 </resources>

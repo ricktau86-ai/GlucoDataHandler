@@ -32,7 +32,7 @@ object ActiveWidgetHandler: NotifierInterface, SharedPreferences.OnSharedPrefere
             NotifySource.SETTINGS,
             NotifySource.OBSOLETE_VALUE,
         )   // to trigger re-start for the case of stopped by the system
-        if(activeWidgets.contains(WidgetType.GLUCOSE_TREND_DELTA_TIME) || activeWidgets.contains(WidgetType.GLUCOSE_TREND_DELTA_TIME_IOB_COB))
+        if(activeWidgets.contains(WidgetType.GLUCOSE_TREND_DELTA_TIME) || activeWidgets.contains(WidgetType.GLUCOSE_TREND_DELTA_TIME_IOB_COB) || activeWidgets.any { it.isRingExtra })
             filter.add(NotifySource.TIME_VALUE)
         if(activeWidgets.contains(WidgetType.GLUCOSE_TREND_DELTA_TIME_IOB_COB) || activeWidgets.contains(WidgetType.CHART_GLUCOSE_TREND_DELTA_TIME_IOB_COB))
             filter.add(NotifySource.IOB_COB_CHANGE)
@@ -48,7 +48,7 @@ object ActiveWidgetHandler: NotifierInterface, SharedPreferences.OnSharedPrefere
                 if(!activeWidgets.contains(type)) {
                     activeWidgets.add(type)
                     Log.i(LOG_ID, "add widget " + type.toString() + " new size " + activeWidgets.size)
-                    if (activeWidgets.size == 1 || type == WidgetType.GLUCOSE_TREND_DELTA_TIME || type == WidgetType.GLUCOSE_TREND_DELTA_TIME_IOB_COB || type == WidgetType.CHART_GLUCOSE_TREND_DELTA_TIME_IOB_COB) {
+                    if (activeWidgets.size == 1 || type.isRingExtra || type == WidgetType.GLUCOSE_TREND_DELTA_TIME || type == WidgetType.GLUCOSE_TREND_DELTA_TIME_IOB_COB || type == WidgetType.CHART_GLUCOSE_TREND_DELTA_TIME_IOB_COB) {
                         InternalNotifier.addNotifier(context, this, getFilter())
                     }
                     if (activeWidgets.size == 1)
@@ -70,7 +70,7 @@ object ActiveWidgetHandler: NotifierInterface, SharedPreferences.OnSharedPrefere
             if (activeWidgets.isEmpty()) {
                 InternalNotifier.remNotifier(context, this)
                 context.getSharedPreferences(Constants.SHARED_PREF_TAG, Context.MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(this)
-            } else if (type == WidgetType.GLUCOSE_TREND_DELTA_TIME || type == WidgetType.GLUCOSE_TREND_DELTA_TIME_IOB_COB || type == WidgetType.CHART_GLUCOSE_TREND_DELTA_TIME_IOB_COB) {
+            } else if (type.isRingExtra || type == WidgetType.GLUCOSE_TREND_DELTA_TIME || type == WidgetType.GLUCOSE_TREND_DELTA_TIME_IOB_COB || type == WidgetType.CHART_GLUCOSE_TREND_DELTA_TIME_IOB_COB) {
                 // re-add filter to remove widget specific source
                 InternalNotifier.addNotifier(context, this, getFilter())
             }
@@ -94,7 +94,7 @@ object ActiveWidgetHandler: NotifierInterface, SharedPreferences.OnSharedPrefere
                     GlucoseBaseWidget.updateWidgets(context, it)
                 else if(dataSource == NotifySource.TIME_VALUE && (!ChartBitmapHandler.isRegistered(this.javaClass.simpleName) || ReceiveData.getElapsedTimeMinute().mod(2) != 0))
                     GlucoseBaseWidget.updateWidgets(context, it)  // otherwise wait for chart update
-            } else if (it == WidgetType.GLUCOSE_TREND_DELTA_TIME || it == WidgetType.GLUCOSE_TREND_DELTA_TIME_IOB_COB) {
+            } else if (it.isRingExtra || it == WidgetType.GLUCOSE_TREND_DELTA_TIME || it == WidgetType.GLUCOSE_TREND_DELTA_TIME_IOB_COB) {
                 if(dataSource != NotifySource.OBSOLETE_VALUE)  // do not update again, as there are already updated by TIME_VALUE
                     GlucoseBaseWidget.updateWidgets(context, it)
             } else if (dataSource != NotifySource.TIME_VALUE) {

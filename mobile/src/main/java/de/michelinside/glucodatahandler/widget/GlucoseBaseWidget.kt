@@ -33,7 +33,15 @@ enum class WidgetType(val cls: Class<*>) {
     GLUCOSE_TREND_DELTA_TIME(GlucoseTrendDeltaTimeWidget::class.java),
     GLUCOSE_TREND_DELTA_TIME_IOB_COB(GlucoseTrendDeltaTimeIobCobWidget::class.java),
     CHART_GLUCOSE_TREND_DELTA_TIME_IOB_COB(ChartWidget::class.java),
-    OTHER_UNIT(OtherUnitWidget::class.java);
+    OTHER_UNIT(OtherUnitWidget::class.java),
+    RING_MINI(RingMiniWidget::class.java),
+    RING_FORECAST(RingForecastWidget::class.java),
+    RING_DAY(RingDayWidget::class.java),
+    RING_PARENTS(RingParentsWidget::class.java),
+    RING_NIGHT(RingNightWidget::class.java),
+    RING_LOWS(RingLowsWidget::class.java);
+
+    val isRingExtra: Boolean get() = name.startsWith("RING_")
 }
 
 abstract class GlucoseBaseWidget(private val type: WidgetType,
@@ -173,6 +181,9 @@ abstract class GlucoseBaseWidget(private val type: WidgetType,
 
     abstract fun getLayout(): Int
 
+    /** widgets that only exist in the Ring style override this */
+    open fun getRingKind(): RingWidgetRenderer.Kind = RingWidgetRenderer.Kind.STANDARD
+
     open fun getShortLayout(): Int {
         return getLayout()
     }
@@ -197,7 +208,7 @@ abstract class GlucoseBaseWidget(private val type: WidgetType,
         val spec = RingWidgetRenderer.Spec(hasTrend, hasDelta, hasTime, hasIobCob, hasOtherUnit, hasGraph)
         val pink = sharedPref.getString(RING_STYLE_PREF, "ring") == "pink"
         val today = sharedPref.getString(RING_TIR_PREF, "24h") == "today"
-        val bitmap = RingWidgetRenderer.render(context, spec, width, height, sharedPref.getInt(Constants.SHARED_PREF_WIDGET_TRANSPARENCY, 3), pink, today)
+        val bitmap = RingWidgetRenderer.render(context, spec, width, height, sharedPref.getInt(Constants.SHARED_PREF_WIDGET_TRANSPARENCY, 3), pink, today, getRingKind())
         remoteViews.setImageViewBitmap(R.id.ring_image, bitmap)
         remoteViews.setContentDescription(R.id.ring_image, RingWidgetRenderer.getContentDescription(context))
         return remoteViews
@@ -205,7 +216,7 @@ abstract class GlucoseBaseWidget(private val type: WidgetType,
 
     private fun getRemoteViews(context: Context, width: Int, height: Int, appWidgetId: Int): RemoteViews {
         val ringPref = context.getSharedPreferences(Constants.SHARED_PREF_TAG, Context.MODE_PRIVATE)
-        if (ringPref.getString(RING_STYLE_PREF, "ring") != "classic") {
+        if (getRingKind() != RingWidgetRenderer.Kind.STANDARD || ringPref.getString(RING_STYLE_PREF, "ring") != "classic") {
             try {
                 return getRingRemoteViews(context, width, height)
             } catch (exc: Exception) {

@@ -75,6 +75,14 @@
                     android:title="@string/pref_widget_ring_style"
                     app:useSimpleSummaryProvider="true"
                     app:iconSpaceReserved="false" />
+                <androidx.preference.ListPreference
+                    android:defaultValue="24h"
+                    android:entries="@array/pref_widget_tir_labels"
+                    android:entryValues="@array/pref_widget_tir_values"
+                    android:key="widget_tir_period"
+                    android:title="@string/pref_widget_tir_period"
+                    app:useSimpleSummaryProvider="true"
+                    app:iconSpaceReserved="false" />
                 <androidx.preference.SeekBarPreference
                     android:defaultValue="3"
                     app:showSeekBarValue="true"

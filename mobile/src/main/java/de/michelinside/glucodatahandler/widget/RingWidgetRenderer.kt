@@ -85,15 +85,31 @@ object RingWidgetRenderer {
 
     private class Tir(val low: Float, val inRange: Float, val high: Float)
 
+    /** set per render: true = time in range of today (00:00-23:59), false = last 24 hours */
+    private var tirToday = false
+
+    private fun startOfToday(): Long {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
+    }
+
     private fun getTir(): Tir? {
-        if (history.size < 12)
+        val values = if (tirToday) {
+            val start = startOfToday()
+            history.filter { it.timestamp >= start }
+        } else history
+        if (values.size < (if (tirToday) 3 else 12))
             return null
         val minT = ReceiveData.targetMinRaw
         val maxT = ReceiveData.targetMaxRaw
         var lo = 0
         var ok = 0
         var hi = 0
-        history.forEach {
+        values.forEach {
             when {
                 it.value < minT -> lo++
                 it.value > maxT -> hi++
@@ -103,6 +119,9 @@ object RingWidgetRenderer {
         val total = (lo + ok + hi).toFloat()
         return Tir(lo / total, ok / total, hi / total)
     }
+
+    private fun tirPeriod(context: Context): String =
+        if (tirToday) (if (isPt(context)) "hoje" else "today") else "24h"
 
     // ---------- state ----------
     private fun getZone(): Zone {
@@ -177,7 +196,8 @@ object RingWidgetRenderer {
     fun getContentDescription(context: Context): String =
         try { ReceiveData.getAsText(context, true) } catch (exc: Exception) { "" }
 
-    fun render(context: Context, spec: Spec, widthDp: Int, heightDp: Int, transparency: Int, pink: Boolean = false): Bitmap {
+    fun render(context: Context, spec: Spec, widthDp: Int, heightDp: Int, transparency: Int, pink: Boolean = false, today: Boolean = false): Bitmap {
+        tirToday = today
         val wDp = if (widthDp > 0) widthDp else 110
         val hDp = if (heightDp > 0) heightDp else 110
         var density = context.resources.displayMetrics.density
@@ -319,7 +339,7 @@ object RingWidgetRenderer {
         val pct = Math.round(tir.inRange * 100F).toString() + "%"
         val numPaint = fit(textPaint(heavy, p.ink, r * 0.62F, Paint.Align.CENTER), pct, r * 1.4F, r * 0.62F)
         canvas.drawText(pct, cx, cy + numPaint.textSize * 0.25F, numPaint)
-        val cap = if (isPt(context)) "alvo 24h" else "range 24h"
+        val cap = (if (isPt(context)) "alvo " else "range ") + tirPeriod(context)
         val capPaint = fit(textPaint(regular, p.sub, r * 0.26F, Paint.Align.CENTER), cap, r * 1.35F, r * 0.26F)
         canvas.drawText(cap, cx, cy + numPaint.textSize * 0.25F + capPaint.textSize * 1.3F, capPaint)
     }
@@ -491,7 +511,7 @@ object RingWidgetRenderer {
             }
             canvas.restore()
             val pt = isPt(context)
-            val cap = (if (pt) "No alvo 24h " else "In range 24h ") + Math.round(tir.inRange * 100F) + "%"
+            val cap = (if (pt) "No alvo " else "In range ") + tirPeriod(context) + " " + Math.round(tir.inRange * 100F) + "%"
             val capPaint = fit(textPaint(medium, p.sub, headH * 0.21F, Paint.Align.RIGHT), cap, barW, headH * 0.21F)
             canvas.drawText(cap, w - pad, by + bh + capPaint.textSize * 1.4F, capPaint)
         }

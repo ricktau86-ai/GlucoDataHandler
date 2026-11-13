@@ -50,6 +50,7 @@ abstract class GlucoseBaseWidget(private val type: WidgetType,
     companion object {
         private const val LOG_ID = "GDH.widget.GlucoseBaseWidget"
         const val RING_STYLE_PREF = "widget_style"
+        const val RING_TIR_PREF = "widget_tir_period"
 
         protected fun getCurrentWidgetIds(context: Context, type: WidgetType): IntArray {
             val component = ComponentName(
@@ -195,7 +196,8 @@ abstract class GlucoseBaseWidget(private val type: WidgetType,
         val sharedPref = context.getSharedPreferences(Constants.SHARED_PREF_TAG, Context.MODE_PRIVATE)
         val spec = RingWidgetRenderer.Spec(hasTrend, hasDelta, hasTime, hasIobCob, hasOtherUnit, hasGraph)
         val pink = sharedPref.getString(RING_STYLE_PREF, "ring") == "pink"
-        val bitmap = RingWidgetRenderer.render(context, spec, width, height, sharedPref.getInt(Constants.SHARED_PREF_WIDGET_TRANSPARENCY, 3), pink)
+        val today = sharedPref.getString(RING_TIR_PREF, "24h") == "today"
+        val bitmap = RingWidgetRenderer.render(context, spec, width, height, sharedPref.getInt(Constants.SHARED_PREF_WIDGET_TRANSPARENCY, 3), pink, today)
         remoteViews.setImageViewBitmap(R.id.ring_image, bitmap)
         remoteViews.setContentDescription(R.id.ring_image, RingWidgetRenderer.getContentDescription(context))
         return remoteViews

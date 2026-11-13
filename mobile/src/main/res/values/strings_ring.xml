@@ -11,4 +11,13 @@
         <item>pink</item>
         <item>classic</item>
     </string-array>
+    <string name="pref_widget_tir_period">Time in range period</string>
+    <string-array name="pref_widget_tir_labels">
+        <item>Last 24 hours</item>
+        <item>Today (00:00–23:59)</item>
+    </string-array>
+    <string-array name="pref_widget_tir_values" translatable="false">
+        <item>24h</item>
+        <item>today</item>
+    </string-array>
 </resources>

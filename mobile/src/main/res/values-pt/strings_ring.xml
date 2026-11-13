@@ -6,4 +6,9 @@
         <item>Ring Rosa</item>
         <item>Clássico</item>
     </string-array>
+    <string name="pref_widget_tir_period">Período do tempo no alvo</string>
+    <string-array name="pref_widget_tir_labels">
+        <item>Últimas 24 horas</item>
+        <item>Hoje (00:00–23:59)</item>
+    </string-array>
 </resources>

@@ -720,50 +720,91 @@ object RingWidgetRenderer {
     }
 
     // ---------- 2 · forecast 20 min ----------
+    /** minutes until value crosses limit at the given slope, or -1 if not within 20 min */
+    private fun minutesTo(now: Float, limit: Float, slope: Float): Int {
+        if (slope == 0F) return -1
+        val m = (limit - now) / slope
+        return if (m > 0F && m <= 20F) max(1, Math.round(m)) else -1
+    }
+
+    private fun forecastMessage(context: Context, now: Float, pred: Float, slope: Float): String {
+        val pt = isPt(context)
+        val tMin = ReceiveData.targetMinRaw
+        val tMax = ReceiveData.targetMaxRaw
+        val low = lowLimit()
+        val rising = slope >= 1F
+        val falling = slope <= -1F
+        fun inMin(m: Int): String = if (m > 0) (if (pt) " em ~$m min" else " in ~$m min") else ""
+        return when {
+            now > tMax -> when {
+                rising -> if (pt) "Acima do alvo e ainda a subir" else "Above target and still rising"
+                falling && pred <= tMax -> (if (pt) "A descer · deve voltar ao alvo" else "Falling · should be back in range") + inMin(minutesTo(now, tMax, slope))
+                falling -> if (pt) "A descer, mas ainda acima do alvo" else "Falling, but still above target"
+                else -> if (pt) "Estável acima do alvo" else "Steady above target"
+            }
+            now < tMin -> when {
+                rising && pred >= tMin -> (if (pt) "A subir · deve voltar ao alvo" else "Rising · should be back in range") + inMin(minutesTo(now, tMin, slope))
+                rising -> if (pt) "A subir, mas ainda abaixo do alvo" else "Rising, but still below target"
+                falling -> if (pt) "Abaixo do alvo e ainda a descer" else "Below target and still falling"
+                else -> if (pt) "Estável abaixo do alvo" else "Steady below target"
+            }
+            pred < low -> (if (pt) "Pode descer abaixo de " else "Could drop below ") + fmtGlucose(low) + inMin(minutesTo(now, low, slope))
+            pred < tMin -> (if (pt) "Pode sair do alvo (abaixo de " else "Could go below ") + fmtGlucose(tMin) + (if (pt) ")" else "") + inMin(minutesTo(now, tMin, slope))
+            pred > tMax -> (if (pt) "Pode passar de " else "Could pass ") + fmtGlucose(tMax) + inMin(minutesTo(now, tMax, slope))
+            else -> if (pt) "Deve manter-se no alvo" else "Should stay in range"
+        }
+    }
+
     private fun drawForecastLayout(context: Context, canvas: Canvas, w: Int, h: Int, d: Float, p: Palette, c: Colors, zone: Zone) {
         val pt = isPt(context)
         val pad = min(h * 0.14F, 20F * d)
         val text = ReceiveData.getGlucoseAsString()
-        val unit = min(h * 0.32F, w * 0.16F)
+        val unit = min(h * 0.3F, w * 0.15F)
         val numPaint = fit(textPaint(heavy, p.ink, unit, Paint.Align.LEFT), text, w * 0.4F, unit)
         val numY = pad + numPaint.textSize * 0.9F
         canvas.drawText(text, pad, numY, numPaint)
+        val nowCap = if (pt) "agora" else "now"
+        val ncPaint = textPaint(regular, p.sub, unit * 0.3F)
+        canvas.drawText(nowCap, pad + numPaint.measureText(text) + unit * 0.15F, numY, ncPaint)
 
         val slope = if (zone == Zone.OBSOLETE) Float.NaN else recentSlope()
-        val slopeTxt = if (slope.isNaN()) "" else String.format(Locale.getDefault(), "%+.1f/min", if (ReceiveData.isMmol) GlucoDataUtils.mgToMmol(slope) else slope)
-        val head = (if (pt) "agora" else "now") + (if (slope.isNaN()) "" else " · " + trendWord(context, slope) + " " + slopeTxt)
-        val hPaint = fit(textPaint(regular, p.sub, unit * 0.32F, Paint.Align.RIGHT), head, w - pad * 3F - numPaint.measureText(text), unit * 0.32F)
-        canvas.drawText(head, w - pad, numY, hPaint)
-
         if (slope.isNaN()) {
             val msg = if (pt) "Sem tendência suficiente para estimar" else "Not enough trend data"
-            val mPaint = fit(textPaint(medium, p.sub, unit * 0.32F), msg, w - pad * 2F, unit * 0.32F)
+            val mPaint = fit(textPaint(medium, p.sub, unit * 0.34F), msg, w - pad * 2F, unit * 0.34F)
             canvas.drawText(msg, pad, h - pad, mPaint)
             return
         }
         val now = ReceiveData.rawValue.toFloat()
         val pred = (now + slope * 20F).coerceIn(39F, 400F)
         val predColor = if (p.filled) p.ink else valueColor(Math.round(pred), c)
-        val predTxt = "≈ " + fmtGlucose(pred)
-        val pPaint = textPaint(heavy, predColor, unit * 0.55F, Paint.Align.RIGHT)
-        val barY = numY + (h - pad - numY) * 0.42F
-        canvas.drawText(predTxt, w - pad, barY + pPaint.textSize * 0.36F, pPaint)
-        val barRight = w - pad * 1.6F - pPaint.measureText(predTxt)
-        val barH = max(6F * d, unit * 0.18F)
-        val bar = Paint(Paint.ANTI_ALIAS_FLAG)
-        val startColor = if (p.filled) p.accent else valueColor(Math.round(now), c)
-        bar.shader = android.graphics.LinearGradient(pad, 0F, barRight, 0F, startColor, predColor, android.graphics.Shader.TileMode.CLAMP)
-        canvas.drawRoundRect(RectF(pad, barY - barH / 2F, max(pad + barH, barRight), barY + barH / 2F), barH / 2F, barH / 2F, bar)
 
-        val msg = when {
-            pred < lowLimit() -> if (pt) "Em 20 min pode descer abaixo de " + fmtGlucose(lowLimit()) else "Could drop below " + fmtGlucose(lowLimit()) + " in 20 min"
-            pred < ReceiveData.targetMinRaw -> if (pt) "Em 20 min pode ficar abaixo do alvo" else "Could go below target in 20 min"
-            pred > ReceiveData.targetMaxRaw -> if (pt) "Em 20 min pode passar de " + fmtGlucose(ReceiveData.targetMaxRaw) else "Could pass " + fmtGlucose(ReceiveData.targetMaxRaw) + " in 20 min"
-            else -> if (pt) "Deve manter-se no alvo" else "Should stay in range"
-        } + (if (pt) " (estimativa)" else " (estimate)")
+        // right block: "daqui a 20 min" + "≈ 321"
+        val predTxt = "≈ " + fmtGlucose(pred)
+        val pPaint = textPaint(heavy, predColor, unit * 0.62F, Paint.Align.RIGHT)
+        val capTxt = if (pt) "daqui a 20 min" else "in 20 min"
+        val cPaint = textPaint(regular, p.sub, unit * 0.3F, Paint.Align.RIGHT)
+        canvas.drawText(capTxt, w - pad, numY - unit * 0.62F, cPaint)
+        canvas.drawText(predTxt, w - pad, numY, pPaint)
+
+        // trend bar from now to the estimate
+        val slopeTxt = String.format(Locale.getDefault(), "%+.1f/min", if (ReceiveData.isMmol) GlucoDataUtils.mgToMmol(slope) else slope)
+        val barY = numY + (h - pad - numY) * 0.38F
+        val barH = max(6F * d, unit * 0.16F)
+        val bar = Paint(Paint.ANTI_ALIAS_FLAG)
+        val startColor = if (p.filled) (p.ink and 0x00FFFFFF) or 0x55000000 else valueColor(Math.round(now), c)
+        bar.shader = android.graphics.LinearGradient(pad, 0F, w - pad, 0F, startColor, predColor, android.graphics.Shader.TileMode.CLAMP)
+        canvas.drawRoundRect(RectF(pad, barY - barH / 2F, w - pad, barY + barH / 2F), barH / 2F, barH / 2F, bar)
+        drawArrow(canvas, w / 2F, barY - barH * 1.6F, barH * 1.6F, if (p.filled) p.ink else predColor)
+        val sPaint = textPaint(regular, p.sub, unit * 0.28F, Paint.Align.CENTER)
+        canvas.drawText(slopeTxt, w / 2F + barH * 3F, barY - barH * 1.1F, sPaint.apply { textAlign = Paint.Align.LEFT })
+
+        val msg = forecastMessage(context, now, pred, slope)
         val mColor = if (p.filled) p.ink else if (pred < ReceiveData.targetMinRaw) c.red else if (pred > ReceiveData.targetMaxRaw) c.amber else p.sub
-        val mPaint = fit(textPaint(medium, mColor, unit * 0.3F), msg, w - pad * 2F, unit * 0.3F)
+        val est = if (pt) "estimativa" else "estimate"
+        val ePaint = textPaint(regular, p.sub, unit * 0.26F, Paint.Align.RIGHT)
+        val mPaint = fit(textPaint(medium, mColor, unit * 0.34F), msg, w - pad * 3F - ePaint.measureText(est), unit * 0.34F)
         canvas.drawText(msg, pad, h - pad, mPaint)
+        canvas.drawText(est, w - pad, h - pad, ePaint)
     }
 
     // ---------- 3 · the day in 24 bars ----------

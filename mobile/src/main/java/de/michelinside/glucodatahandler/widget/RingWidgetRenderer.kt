@@ -69,22 +69,40 @@ object RingWidgetRenderer {
     }
 
     // ---------- history cache (shared by all widgets) ----------
+    // The widgets render on the main thread, so the database is read as little as possible:
+    // a full 7-day read only on the first render and every few hours; otherwise only the
+    // newest values (with a 30 min overlap for backfilled readings) when a new value arrived.
+    private const val FULL_RELOAD_MS = 6 * 3_600_000L
+    private const val OVERLAP_MS = 30 * 60_000L
     private var cacheKey = -1L
-    private var cacheTime = 0L
+    private var fullLoadTime = 0L
     private var history: List<GlucoseValue> = emptyList()
 
     private fun loadHistory() {
         val now = System.currentTimeMillis()
-        if (cacheKey == ReceiveData.time && now - cacheTime < 60_000L)
-            return
-        history = try {
-            dbAccess.getGlucoseValues(now - HISTORY_DAYS * 86_400_000L)
+        val minTime = now - HISTORY_DAYS * 86_400_000L
+        try {
+            if (history.isEmpty() || now - fullLoadTime > FULL_RELOAD_MS) {
+                history = dbAccess.getGlucoseValues(minTime).sortedBy { it.timestamp }
+                fullLoadTime = now
+            } else if (cacheKey != ReceiveData.time) {
+                val lastTs = history.last().timestamp
+                val fresh = dbAccess.getGlucoseValues(lastTs - OVERLAP_MS)
+                if (fresh.isNotEmpty()) {
+                    val merged = LinkedHashMap<Long, GlucoseValue>(history.size + fresh.size)
+                    for (v in history) if (v.timestamp >= minTime) merged[v.timestamp] = v
+                    for (v in fresh) merged[v.timestamp] = v
+                    history = merged.values.sortedBy { it.timestamp }
+                } else {
+                    history = history.filter { it.timestamp >= minTime }
+                }
+            } else {
+                return
+            }
         } catch (exc: Exception) {
             Log.e(LOG_ID, "loadHistory exception: " + exc.message.toString())
-            emptyList()
         }
         cacheKey = ReceiveData.time
-        cacheTime = now
     }
 
     private class Tir(val low: Float, val inRange: Float, val high: Float)

@@ -31,28 +31,33 @@ jobs:
             echo 'DEXCOM_APPLICATION_ID_APAC="d8665ade-9673-4e27-9ff6-92db4ce13d13"'
             echo 'NIGHTSCOUT_DEBUG_SERVER=""'
           } > local.properties
-          ./gradlew :mobile:assembleRing --stacktrace --no-configuration-cache
+          ./gradlew :mobile:assembleRing :wear:assembleRing --stacktrace --no-configuration-cache
 
       - name: Find APK
         id: apk
         run: |
           APK=$(find mobile/build/outputs/apk/ring -name "*.apk" | head -n 1)
           cp "$APK" GDH_Ring.apk
-          zip -j GDH_Ring.zip GDH_Ring.apk
+          WEAR=$(find wear/build/outputs/apk/ring -name "*.apk" | head -n 1)
+          cp "$WEAR" GDH_Ring_Wear.apk
+          zip -j GDH_Ring.zip GDH_Ring.apk GDH_Ring_Wear.apk
           echo "file=GDH_Ring.apk" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
           name: GDH_Ring
-          path: GDH_Ring.apk
+          path: |
+            GDH_Ring.apk
+            GDH_Ring_Wear.apk
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ring-${{ github.run_number }}
           name: GDH Ring build ${{ github.run_number }}
-          body: Widgets estilo Ring. Instala ao lado da GlucoDataHandler original (pacote de.michelinside.glucodatahandler.ring).
+          body: "Widgets estilo Ring + app de relógio com a complicação 'Previsão 20 min'. GDH_Ring.apk vai para o telemóvel, GDH_Ring_Wear.apk para o relógio. Instalam ao lado da GlucoDataHandler original (pacote de.michelinside.glucodatahandler.ring)."
           files: |
             GDH_Ring.apk
+            GDH_Ring_Wear.apk
             GDH_Ring.zip
           make_latest: true

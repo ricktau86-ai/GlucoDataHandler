@@ -40,7 +40,9 @@ jobs:
           cp "$APK" GDH_Ring.apk
           WEAR=$(find wear/build/outputs/apk/ring -name "*.apk" | head -n 1)
           cp "$WEAR" GDH_Ring_Wear.apk
-          zip -j GDH_Ring.zip GDH_Ring.apk GDH_Ring_Wear.apk
+          # one APK per zip: installers treat several APKs in one zip as split parts of one app
+          zip -j GDH_Ring.zip GDH_Ring.apk
+          zip -j GDH_Ring_Wear.zip GDH_Ring_Wear.apk
           echo "file=GDH_Ring.apk" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
@@ -60,4 +62,5 @@ jobs:
             GDH_Ring.apk
             GDH_Ring_Wear.apk
             GDH_Ring.zip
+            GDH_Ring_Wear.zip
           make_latest: true

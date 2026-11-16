@@ -26,4 +26,19 @@
     <string name="widget_ring_parents">Ring · For parents</string>
     <string name="widget_ring_night">Ring · How the night went</string>
     <string name="widget_ring_lows">Ring · Low counter</string>
+    <string name="pref_ring_aod_style">Ring AOD style</string>
+    <string-array name="pref_ring_aod_style_labels">
+        <item>Classic (uses style below)</item>
+        <item>A · Thin ring</item>
+        <item>B · Number + 3 hours</item>
+        <item>C · Minimal</item>
+        <item>D · Time in range</item>
+    </string-array>
+    <string-array name="pref_ring_aod_style_values" translatable="false">
+        <item>classic</item>
+        <item>ring</item>
+        <item>spark</item>
+        <item>minimal</item>
+        <item>tir</item>
+    </string-array>
 </resources>

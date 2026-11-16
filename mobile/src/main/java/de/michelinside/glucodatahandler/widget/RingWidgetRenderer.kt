@@ -1019,4 +1019,242 @@ object RingWidgetRenderer {
             canvas.drawText(row.second, right, y, vp)
         }
     }
+
+    // =====================================================================
+    // AOD (always-on display): black background, thin lines, no filled cards
+    // =====================================================================
+
+    enum class AodStyle { RING, SPARK, MINIMAL, TIR }
+
+    private val light: Typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+
+    private class AodColors(val ink: Int, val sub: Int, val faint: Int, val track: Int, val accent: Int, val alarm: Boolean)
+
+    private fun aodColors(zone: Zone, pink: Boolean): AodColors {
+        val ink = 0xFFF5F5F4.toInt()
+        val sub = 0xFFA8A29E.toInt()
+        val faint = 0xFF78716C.toInt()
+        val track = 0xFF292524.toInt()
+        val red = 0xFFF87171.toInt()
+        return when (zone) {
+            Zone.OK -> AodColors(ink, sub, faint, track, if (pink) 0xFFF472B6.toInt() else 0xFF4ADE80.toInt(), false)
+            Zone.HIGH -> AodColors(ink, sub, faint, track, 0xFFFBBF24.toInt(), false)
+            Zone.VERY_HIGH, Zone.LOW, Zone.VERY_LOW -> AodColors(red, red, faint, track, red, true)
+            Zone.OBSOLETE -> AodColors(faint, faint, faint, track, faint, false)
+        }
+    }
+
+    private fun aodSubline(context: Context): String {
+        val parts = ArrayList<String>()
+        if (!ReceiveData.isObsoleteShort()) parts.add(ReceiveData.getDeltaAsString())
+        parts.add(ReceiveData.getElapsedTimeMinuteAsString(context))
+        return parts.joinToString(" · ")
+    }
+
+    fun renderAod(context: Context, style: AodStyle, pink: Boolean, today: Boolean, scale: Float): Bitmap? {
+        try {
+            tirToday = today
+            loadHistory()
+            val d = context.resources.displayMetrics.density * scale.coerceIn(0.3F, 2.5F)
+            val (wDp, hDp) = when (style) {
+                AodStyle.RING -> Pair(200, 200)
+                AodStyle.SPARK -> Pair(260, 180)
+                AodStyle.MINIMAL -> Pair(250, 52)
+                AodStyle.TIR -> Pair(270, 120)
+            }
+            val w = max(1, (wDp * d).toInt())
+            val h = max(1, (hDp * d).toInt())
+            val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            val zone = getZone()
+            val a = aodColors(zone, pink)
+            when (style) {
+                AodStyle.RING -> drawAodRing(context, canvas, w, h, d, a, zone)
+                AodStyle.SPARK -> drawAodSpark(context, canvas, w, h, d, a, zone)
+                AodStyle.MINIMAL -> drawAodMinimal(context, canvas, w, h, d, a, zone)
+                AodStyle.TIR -> drawAodTir(context, canvas, w, h, d, a, zone, pink)
+            }
+            return bitmap
+        } catch (exc: Exception) {
+            Log.e(LOG_ID, "renderAod exception: " + exc.message.toString())
+            return null
+        }
+    }
+
+    private fun drawAodLabel(context: Context, canvas: Canvas, x: Float, y: Float, size: Float, a: AodColors, zone: Zone, align: Paint.Align) {
+        if (!a.alarm) return
+        val label = zoneLabel(context, zone).uppercase(Locale.getDefault())
+        val p = textPaint(medium, a.accent, size, align)
+        p.letterSpacing = 0.1F
+        canvas.drawText(label, x, y, p)
+    }
+
+    // A · thin ring
+    private fun drawAodRing(context: Context, canvas: Canvas, w: Int, h: Int, d: Float, a: AodColors, zone: Zone) {
+        val cx = w / 2F
+        val cy = h / 2F
+        val stroke = 3F * d
+        val r = min(w, h) / 2F - stroke * 2F
+        val rect = RectF(cx - r, cy - r, cx + r, cy + r)
+        val track = Paint(Paint.ANTI_ALIAS_FLAG)
+        track.style = Paint.Style.STROKE
+        track.strokeWidth = stroke
+        track.strokeCap = Paint.Cap.ROUND
+        track.color = a.track
+        canvas.drawArc(rect, 135F, 270F, false, track)
+        if (zone != Zone.OBSOLETE) {
+            track.color = a.accent
+            canvas.drawArc(rect, 135F, 270F * glucoseFraction(), false, track)
+        }
+        val text = ReceiveData.getGlucoseAsString()
+        val num = fit(textPaint(light, if (a.alarm) a.accent else a.ink, r * 0.62F, Paint.Align.CENTER), text, r * 1.4F, r * 0.62F)
+        if (zone == Zone.OBSOLETE) num.isStrikeThruText = !ReceiveData.isObsoleteLong()
+        val numY = cy + num.textSize * 0.25F
+        canvas.drawText(text, cx, numY, num)
+        val sub = aodSubline(context)
+        val sp = fit(textPaint(regular, a.sub, r * 0.15F, Paint.Align.LEFT), sub, r * 1.1F, r * 0.15F)
+        val arrow = sp.textSize * 1.2F
+        val total = arrow + sp.textSize * 0.4F + sp.measureText(sub)
+        val sx = cx - total / 2F
+        val sy = numY + sp.textSize * 1.8F
+        drawArrow(canvas, sx + arrow / 2F, sy - sp.textSize * 0.33F, arrow, a.accent)
+        canvas.drawText(sub, sx + arrow + sp.textSize * 0.4F, sy, sp)
+        drawAodLabel(context, canvas, cx, sy + sp.textSize * 1.9F, r * 0.13F, a, zone, Paint.Align.CENTER)
+    }
+
+    // B · number + last 3 hours
+    private fun drawAodSpark(context: Context, canvas: Canvas, w: Int, h: Int, d: Float, a: AodColors, zone: Zone) {
+        val text = ReceiveData.getGlucoseAsString()
+        val num = textPaint(light, if (a.alarm) a.accent else a.ink, h * 0.3F, Paint.Align.LEFT)
+        if (zone == Zone.OBSOLETE) num.isStrikeThruText = !ReceiveData.isObsoleteLong()
+        val tw = num.measureText(text)
+        val arrow = num.textSize * 0.42F
+        val startX = (w - tw - arrow * 1.4F) / 2F
+        val numY = num.textSize * 0.95F
+        canvas.drawText(text, startX, numY, num)
+        drawArrow(canvas, startX + tw + arrow * 0.9F, numY - num.textSize * 0.32F, arrow, a.accent)
+
+        val top = numY + h * 0.08F
+        val bottom = h - h * 0.16F
+        val left = w * 0.05F
+        val right = w * 0.95F
+        val now = System.currentTimeMillis()
+        val minTime = now - 3 * 3_600_000L
+        val values = history.filter { it.timestamp >= minTime }
+        val minT = ReceiveData.targetMinRaw
+        val maxT = ReceiveData.targetMaxRaw
+        var lo = minT - 20F
+        var hi = maxT + 20F
+        values.forEach { lo = min(lo, it.value - 5F); hi = max(hi, it.value + 5F) }
+        fun yOf(v: Float) = bottom - (v - lo) / (hi - lo) * (bottom - top)
+        fun xOf(t: Long) = left + (t - minTime).toFloat() / (now - minTime).toFloat() * (right - left)
+        val dash = Paint(Paint.ANTI_ALIAS_FLAG)
+        dash.color = a.track
+        dash.strokeWidth = max(1F, d)
+        dash.pathEffect = DashPathEffect(floatArrayOf(3F * d, 5F * d), 0F)
+        canvas.drawLine(left, yOf(maxT), right, yOf(maxT), dash)
+        canvas.drawLine(left, yOf(minT), right, yOf(minT), dash)
+        if (values.size >= 2) {
+            val path = Path()
+            values.sortedBy { it.timestamp }.forEachIndexed { i, v ->
+                val x = xOf(v.timestamp)
+                val y = yOf(v.value.toFloat())
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            val line = Paint(Paint.ANTI_ALIAS_FLAG)
+            line.style = Paint.Style.STROKE
+            line.strokeWidth = 2F * d
+            line.strokeJoin = Paint.Join.ROUND
+            line.color = if (a.alarm) 0xFF7F1D1D.toInt() else a.faint
+            canvas.drawPath(path, line)
+            val last = values.maxByOrNull { it.timestamp }!!
+            val dot = Paint(Paint.ANTI_ALIAS_FLAG)
+            dot.color = a.accent
+            canvas.drawCircle(xOf(last.timestamp), yOf(last.value.toFloat()), 4F * d, dot)
+        }
+        if (a.alarm) {
+            drawAodLabel(context, canvas, w / 2F, h - h * 0.03F, h * 0.075F, a, zone, Paint.Align.CENTER)
+        } else {
+            val cap = (if (isPt(context)) "últimas 3 h · " else "last 3 h · ") + ReceiveData.getElapsedTimeMinuteAsString(context)
+            canvas.drawText(cap, w / 2F, h - h * 0.03F, textPaint(regular, a.faint, h * 0.07F, Paint.Align.CENTER))
+        }
+    }
+
+    // C · minimal pill
+    private fun drawAodMinimal(context: Context, canvas: Canvas, w: Int, h: Int, d: Float, a: AodColors, zone: Zone) {
+        val text = ReceiveData.getGlucoseAsString()
+        val sub = if (a.alarm) zoneLabel(context, zone).uppercase(Locale.getDefault()) else aodSubline(context)
+        val numP = textPaint(regular, if (a.alarm) a.accent else a.ink, h * 0.42F)
+        if (zone == Zone.OBSOLETE) numP.isStrikeThruText = !ReceiveData.isObsoleteLong()
+        val subP = textPaint(if (a.alarm) medium else regular, if (a.alarm) a.accent else a.faint, h * 0.28F)
+        val dotR = h * 0.08F
+        val arrow = numP.textSize * 0.62F
+        val gap = h * 0.2F
+        val content = dotR * 2F + gap + numP.measureText(text) + gap * 0.6F + arrow + gap + subP.measureText(sub)
+        val pillW = min(w.toFloat() - 2F * d, content + h * 0.7F)
+        val left = (w - pillW) / 2F
+        val outline = Paint(Paint.ANTI_ALIAS_FLAG)
+        outline.style = Paint.Style.STROKE
+        outline.strokeWidth = max(1F, d)
+        outline.color = if (a.alarm) a.accent else a.track
+        val inset = outline.strokeWidth
+        canvas.drawRoundRect(RectF(left + inset, inset, left + pillW - inset, h - inset), h / 2F, h / 2F, outline)
+        var x = left + h * 0.35F
+        val cy = h / 2F
+        val dot = Paint(Paint.ANTI_ALIAS_FLAG)
+        dot.color = a.accent
+        canvas.drawCircle(x + dotR, cy, dotR, dot)
+        x += dotR * 2F + gap
+        canvas.drawText(text, x, cy + numP.textSize * 0.36F, numP)
+        x += numP.measureText(text) + gap * 0.6F
+        drawArrow(canvas, x + arrow / 2F, cy, arrow, if (a.alarm) a.accent else a.ink)
+        x += arrow + gap
+        canvas.drawText(sub, x, cy + subP.textSize * 0.36F, subP)
+    }
+
+    // D · value + time in range ring
+    private fun drawAodTir(context: Context, canvas: Canvas, w: Int, h: Int, d: Float, a: AodColors, zone: Zone, pink: Boolean) {
+        val tir = getTir()
+        val ringD = h * 0.8F
+        val gap = h * 0.22F
+        val text = ReceiveData.getGlucoseAsString()
+        val num = textPaint(light, if (a.alarm) a.accent else a.ink, h * 0.5F, Paint.Align.RIGHT)
+        if (zone == Zone.OBSOLETE) num.isStrikeThruText = !ReceiveData.isObsoleteLong()
+        val blockW = max(num.measureText(text), h * 0.9F)
+        val total = blockW + (if (tir != null) gap + ringD else 0F)
+        val textRight = (w - total) / 2F + blockW
+        val numY = h / 2F + num.textSize * 0.2F
+        canvas.drawText(text, textRight, numY, num)
+        val sub = aodSubline(context)
+        val sp = fit(textPaint(regular, a.sub, h * 0.13F, Paint.Align.RIGHT), sub, blockW, h * 0.13F)
+        val sy = numY + sp.textSize * 1.7F
+        canvas.drawText(sub, textRight, sy, sp)
+        val arrowS = sp.textSize * 1.1F
+        drawArrow(canvas, textRight - sp.measureText(sub) - arrowS, sy - sp.textSize * 0.33F, arrowS, a.accent)
+        drawAodLabel(context, canvas, textRight, numY - num.textSize * 0.95F, h * 0.1F, a, zone, Paint.Align.RIGHT)
+        if (tir == null) return
+        val cx = textRight + gap + ringD / 2F
+        val cy = h / 2F
+        val stroke = 3.5F * d
+        val r = ringD / 2F - stroke
+        val rect = RectF(cx - r, cy - r, cx + r, cy + r)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = stroke
+        var start = -90F
+        listOf(Pair(tir.inRange, if (pink) 0xFFF472B6.toInt() else 0xFF4ADE80.toInt()), Pair(tir.high, 0xFFFBBF24.toInt()), Pair(tir.low, 0xFFF87171.toInt())).forEach {
+            if (it.first > 0F) {
+                val sweep = 360F * it.first
+                paint.color = it.second
+                canvas.drawArc(rect, start, max(0.5F, sweep - 1.5F), false, paint)
+                start += sweep
+            }
+        }
+        val pct = Math.round(tir.inRange * 100F).toString() + "%"
+        val pp = fit(textPaint(regular, a.ink, r * 0.5F, Paint.Align.CENTER), pct, r * 1.4F, r * 0.5F)
+        canvas.drawText(pct, cx, cy + pp.textSize * 0.2F, pp)
+        val cap = (if (isPt(context)) "alvo " else "range ") + tirPeriod(context)
+        val cp = fit(textPaint(regular, a.faint, r * 0.24F, Paint.Align.CENTER), cap, r * 1.4F, r * 0.24F)
+        canvas.drawText(cap, cx, cy + pp.textSize * 0.2F + cp.textSize * 1.4F, cp)
+    }
 }

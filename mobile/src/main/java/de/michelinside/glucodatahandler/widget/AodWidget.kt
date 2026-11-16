@@ -62,6 +62,8 @@ class AodWidget(context: Context): WallpaperBase(context, "GDH.AodWidget") {
                 xPos = sharedPreferences.getInt(Constants.SHARED_PREF_AOD_WP_X_POS, 20)
                 Log.d(LOG_ID, "New X pos: $xPos")
                 update()
+            } else if (key == RING_AOD_STYLE_PREF || key == GlucoseBaseWidget.RING_STYLE_PREF || key == GlucoseBaseWidget.RING_TIR_PREF) {
+                update()
             } else if(key == Constants.SHARED_PREF_AOD_WP_COLOURED && widgetColoured != sharedPreferences.getBoolean(Constants.SHARED_PREF_AOD_WP_COLOURED, false)) {
                 widgetColoured = sharedPreferences.getBoolean(Constants.SHARED_PREF_AOD_WP_COLOURED, false)
                 Log.d(LOG_ID, "Widget is coloured : $widgetColoured")
@@ -75,7 +77,25 @@ class AodWidget(context: Context): WallpaperBase(context, "GDH.AodWidget") {
     }
 
     fun getBitmap() : Bitmap? {
+        val ringStyle = sharedPref.getString(RING_AOD_STYLE_PREF, "classic") ?: "classic"
+        if (ringStyle != "classic") {
+            val aodStyle = when (ringStyle) {
+                "spark" -> RingWidgetRenderer.AodStyle.SPARK
+                "minimal" -> RingWidgetRenderer.AodStyle.MINIMAL
+                "tir" -> RingWidgetRenderer.AodStyle.TIR
+                else -> RingWidgetRenderer.AodStyle.RING
+            }
+            val pink = sharedPref.getString(GlucoseBaseWidget.RING_STYLE_PREF, "ring") == "pink"
+            val today = sharedPref.getString(GlucoseBaseWidget.RING_TIR_PREF, "24h") == "today"
+            val bitmap = RingWidgetRenderer.renderAod(context, aodStyle, pink, today, size / 10F)
+            if (bitmap != null)
+                return bitmap
+        }
         return createWallpaperView(if (widgetColoured) null else Constants.AOD_COLOUR)
+    }
+
+    companion object {
+        const val RING_AOD_STYLE_PREF = "ring_aod_style"
     }
 
     fun getYPos() : Int {

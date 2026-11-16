@@ -76,6 +76,14 @@
                 android:title="@string/pref_lockscreen_enabled"
                 app:iconSpaceReserved="false" />
             <androidx.preference.ListPreference
+                android:defaultValue="classic"
+                android:entries="@array/pref_ring_aod_style_labels"
+                android:entryValues="@array/pref_ring_aod_style_values"
+                android:key="ring_aod_style"
+                android:title="@string/pref_ring_aod_style"
+                app:useSimpleSummaryProvider="true"
+                app:iconSpaceReserved="false" />
+            <androidx.preference.ListPreference
                 android:defaultValue="glucose_trend"
                 android:entries="@array/pref_floating_widget_style_labels"
                 android:entryValues="@array/pref_floating_widget_style_values"

@@ -17,4 +17,12 @@
     <string name="widget_ring_parents">Ring · Para os pais</string>
     <string name="widget_ring_night">Ring · Como correu a noite</string>
     <string name="widget_ring_lows">Ring · Contador de baixas</string>
+    <string name="pref_ring_aod_style">Estilo AOD Ring</string>
+    <string-array name="pref_ring_aod_style_labels">
+        <item>Clássico (usa o estilo abaixo)</item>
+        <item>A · Anel fino</item>
+        <item>B · Número + 3 horas</item>
+        <item>C · Mínimo</item>
+        <item>D · Tempo no alvo</item>
+    </string-array>
 </resources>

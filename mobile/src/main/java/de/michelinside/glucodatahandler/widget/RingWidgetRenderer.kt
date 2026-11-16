@@ -168,15 +168,15 @@ object RingWidgetRenderer {
             return when (zone) {
                 Zone.VERY_LOW -> Palette(0xFF7F1D1D.toInt(), 0xFFFFFFFF.toInt(), 0xFFFECACA.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
                 Zone.LOW -> Palette(0xFFDC2626.toInt(), 0xFFFFFFFF.toInt(), 0xFFFEE2E2.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
-                Zone.VERY_HIGH -> Palette(0xFFF59E0B.toInt(), 0xFF1C1917.toInt(), 0xFF451A03.toInt(), 0x33000000, 0xFF1C1917.toInt(), true)
+                Zone.VERY_HIGH -> Palette(0xFFB91C1C.toInt(), 0xFFFFFFFF.toInt(), 0xFFFEE2E2.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
                 Zone.HIGH -> Palette(0xFFFDE68A.toInt(), 0xFF1C1917.toInt(), 0xFF713F12.toInt(), 0x33000000, 0xFF1C1917.toInt(), true)
                 Zone.OBSOLETE -> Palette(c.obsCard, c.obsInk, c.obsInk, 0xFFD6D3D1.toInt(), c.obsInk, false)
                 Zone.OK -> Palette(c.card, c.ink, c.sub, c.track, c.green, false)
             }
         }
         return when (zone) {
-            Zone.VERY_LOW -> Palette(0xFFB91C1C.toInt(), 0xFFFFFFFF.toInt(), 0xFFFECACA.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
-            Zone.VERY_HIGH -> Palette(0xFFF59E0B.toInt(), 0xFF1C1917.toInt(), 0xFF451A03.toInt(), 0x33000000, 0xFF1C1917.toInt(), true)
+            Zone.VERY_LOW -> Palette(0xFF7F1D1D.toInt(), 0xFFFFFFFF.toInt(), 0xFFFECACA.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
+            Zone.VERY_HIGH -> Palette(0xFFDC2626.toInt(), 0xFFFFFFFF.toInt(), 0xFFFEE2E2.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
             Zone.LOW -> Palette(c.card, c.ink, c.sub, c.track, c.red, false)
             Zone.HIGH -> Palette(c.card, c.ink, c.sub, c.track, c.amber, false)
             Zone.OBSOLETE -> Palette(c.obsCard, c.obsInk, c.obsInk, c.track, c.obsInk, false)
@@ -781,7 +781,7 @@ object RingWidgetRenderer {
         val numPaint = fit(textPaint(heavy, p.ink, unit, Paint.Align.LEFT), text, w * 0.4F, unit)
         val numY = pad + numPaint.textSize * 0.9F
         canvas.drawText(text, pad, numY, numPaint)
-        val nowCap = if (pt) "agora" else "now"
+        val nowCap = if (p.filled) zoneLabel(context, zone).uppercase(Locale.getDefault()) else (if (pt) "agora" else "now")
         val ncPaint = textPaint(regular, p.sub, unit * 0.3F)
         canvas.drawText(nowCap, pad + numPaint.measureText(text) + unit * 0.15F, numY, ncPaint)
 
@@ -793,6 +793,14 @@ object RingWidgetRenderer {
             return
         }
         val now = ReceiveData.rawValue.toFloat()
+        if (now >= 400F || now <= 40F) {
+            // sensor limit: the real value can be beyond it and the trend reads flat, so no estimate
+            val msg = if (now >= 400F) (if (pt) "Acima do limite do sensor (400) · o valor real pode ser maior" else "Above sensor limit (400) · real value may be higher")
+                      else (if (pt) "Abaixo do limite do sensor (40) · o valor real pode ser menor" else "Below sensor limit (40) · real value may be lower")
+            val mPaint = fit(textPaint(medium, p.ink, unit * 0.34F), msg, w - pad * 2F, unit * 0.34F)
+            canvas.drawText(msg, pad, h - pad, mPaint)
+            return
+        }
         val pred = (now + slope * 20F).coerceIn(39F, 400F)
         val predColor = if (p.filled) p.ink else valueColor(Math.round(pred), c)
 

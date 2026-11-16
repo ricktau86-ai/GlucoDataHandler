@@ -50,7 +50,8 @@ object Forecast {
 
     /** predicted value in mg/dl, NaN if not available */
     fun predicted(): Float {
-        if (ReceiveData.isObsoleteShort() || ReceiveData.rawValue <= 0)
+        // at the sensor limits (>= 400 / <= 40) the trend is flat by definition: no estimate
+        if (ReceiveData.isObsoleteShort() || ReceiveData.rawValue <= 40 || ReceiveData.rawValue >= 400)
             return Float.NaN
         val s = slope()
         if (s.isNaN())

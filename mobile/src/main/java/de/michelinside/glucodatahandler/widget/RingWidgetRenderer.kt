@@ -149,17 +149,24 @@ object RingWidgetRenderer {
         if (tirToday) (if (isPt(context)) "hoje" else "today") else "24h"
 
     // ---------- state ----------
+    // Ricardo's colour bands (mg/dL): <=69 red · 70-79 yellow · 80-180 green · 181-250 yellow · >=251 red
+    private const val BAND_VERY_LOW = 69
+    private const val BAND_LOW = 79
+    private const val BAND_HIGH = 180
+    private const val BAND_VERY_HIGH = 250
+
+    private fun zoneOf(mg: Int): Zone = when {
+        mg <= BAND_VERY_LOW -> Zone.VERY_LOW
+        mg <= BAND_LOW -> Zone.LOW
+        mg <= BAND_HIGH -> Zone.OK
+        mg <= BAND_VERY_HIGH -> Zone.HIGH
+        else -> Zone.VERY_HIGH
+    }
+
     private fun getZone(): Zone {
-        if (ReceiveData.time == 0L)
+        if (ReceiveData.time == 0L || ReceiveData.getAlarmType() == AlarmType.OBSOLETE)
             return Zone.OBSOLETE
-        return when (ReceiveData.getAlarmType()) {
-            AlarmType.OBSOLETE -> Zone.OBSOLETE
-            AlarmType.VERY_LOW -> Zone.VERY_LOW
-            AlarmType.LOW -> Zone.LOW
-            AlarmType.VERY_HIGH -> Zone.VERY_HIGH
-            AlarmType.HIGH -> Zone.HIGH
-            else -> Zone.OK
-        }
+        return zoneOf(ReceiveData.rawValue)
     }
 
     private fun getPalette(zone: Zone, c: Colors): Palette {
@@ -167,7 +174,7 @@ object RingWidgetRenderer {
             // every out-of-range state fills the whole card so it never blends with the pink
             return when (zone) {
                 Zone.VERY_LOW -> Palette(0xFF7F1D1D.toInt(), 0xFFFFFFFF.toInt(), 0xFFFECACA.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
-                Zone.LOW -> Palette(0xFFDC2626.toInt(), 0xFFFFFFFF.toInt(), 0xFFFEE2E2.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
+                Zone.LOW -> Palette(0xFFFDE68A.toInt(), 0xFF1C1917.toInt(), 0xFF713F12.toInt(), 0x33000000, 0xFF1C1917.toInt(), true)
                 Zone.VERY_HIGH -> Palette(0xFFB91C1C.toInt(), 0xFFFFFFFF.toInt(), 0xFFFEE2E2.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
                 Zone.HIGH -> Palette(0xFFFDE68A.toInt(), 0xFF1C1917.toInt(), 0xFF713F12.toInt(), 0x33000000, 0xFF1C1917.toInt(), true)
                 Zone.OBSOLETE -> Palette(c.obsCard, c.obsInk, c.obsInk, 0xFFD6D3D1.toInt(), c.obsInk, false)
@@ -177,7 +184,7 @@ object RingWidgetRenderer {
         return when (zone) {
             Zone.VERY_LOW -> Palette(0xFF7F1D1D.toInt(), 0xFFFFFFFF.toInt(), 0xFFFECACA.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
             Zone.VERY_HIGH -> Palette(0xFFDC2626.toInt(), 0xFFFFFFFF.toInt(), 0xFFFEE2E2.toInt(), 0x55FFFFFF, 0xFFFFFFFF.toInt(), true)
-            Zone.LOW -> Palette(c.card, c.ink, c.sub, c.track, c.red, false)
+            Zone.LOW -> Palette(c.card, c.ink, c.sub, c.track, c.amber, false)
             Zone.HIGH -> Palette(c.card, c.ink, c.sub, c.track, c.amber, false)
             Zone.OBSOLETE -> Palette(c.obsCard, c.obsInk, c.obsInk, c.track, c.obsInk, false)
             Zone.OK -> Palette(c.card, c.ink, c.sub, c.track, c.green, false)
@@ -202,14 +209,10 @@ object RingWidgetRenderer {
     private fun isDark(context: Context): Boolean =
         (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
-    private fun valueColor(mg: Int, c: Colors): Int {
-        return when {
-            ReceiveData.lowRaw > 0F && mg <= ReceiveData.lowRaw -> c.red
-            mg < ReceiveData.targetMinRaw -> c.red
-            ReceiveData.highRaw > 0F && mg >= ReceiveData.highRaw -> c.amber
-            mg > ReceiveData.targetMaxRaw -> c.amber
-            else -> c.green
-        }
+    private fun valueColor(mg: Int, c: Colors): Int = when (zoneOf(mg)) {
+        Zone.VERY_LOW, Zone.VERY_HIGH -> c.red
+        Zone.LOW, Zone.HIGH -> c.amber
+        else -> c.green
     }
 
     private fun glucoseFraction(): Float {
@@ -1038,8 +1041,8 @@ object RingWidgetRenderer {
         val red = 0xFFF87171.toInt()
         return when (zone) {
             Zone.OK -> AodColors(ink, sub, faint, track, if (pink) 0xFFF472B6.toInt() else 0xFF4ADE80.toInt(), false)
-            Zone.HIGH -> AodColors(ink, sub, faint, track, 0xFFFBBF24.toInt(), false)
-            Zone.VERY_HIGH, Zone.LOW, Zone.VERY_LOW -> AodColors(red, red, faint, track, red, true)
+            Zone.HIGH, Zone.LOW -> AodColors(ink, sub, faint, track, 0xFFFBBF24.toInt(), false)
+            Zone.VERY_HIGH, Zone.VERY_LOW -> AodColors(red, red, faint, track, red, true)
             Zone.OBSOLETE -> AodColors(faint, faint, faint, track, faint, false)
         }
     }
